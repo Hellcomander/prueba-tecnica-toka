@@ -1,0 +1,21 @@
+{
+  "name": "@toka/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lenguaje publicado: envelope de eventos, schemas zod, routing keys, topología y catálogo de permisos.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "jest --passWithNoTests",
+    "test:cov": "tsc -p tsconfig.json && jest --coverage"
+  },
+  "dependencies": {
+    "tslib": "2.9.1",
+    "zod": "4.6.7"
+  }
+}

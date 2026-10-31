@@ -1,0 +1,53 @@
+{
+  "name": "@toka/nest-common",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plomería técnica compartida: logging, correlation-id, errores RFC 9457, guards JWT, AMQP y cliente HTTP resiliente.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "jest --passWithNoTests",
+    "test:cov": "tsc -p tsconfig.json && jest --coverage"
+  },
+  "dependencies": {
+    "@toka/contracts": "0.1.0",
+    "amqp-connection-manager": "4.1.15",
+    "amqplib": "0.10.9",
+    "axios": "1.21.0",
+    "helmet": "8.3.0",
+    "jose": "5.10.0",
+    "nestjs-cls": "6.3.1",
+    "nestjs-pino": "4.6.1",
+    "opossum": "10.0.0",
+    "pino": "9.14.0",
+    "pino-http": "10.5.0",
+    "tslib": "2.9.1"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.0",
+    "reflect-metadata": "^0.2.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@nestjs/platform-express": "11.2.8",
+    "@nestjs/testing": "11.2.8",
+    "@types/amqplib": "0.10.8",
+    "@types/opossum": "8.1.9",
+    "@types/supertest": "7.2.1",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.15.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "supertest": "7.3.1"
+  }
+}

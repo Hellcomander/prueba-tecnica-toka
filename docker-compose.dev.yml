@@ -1,0 +1,13 @@
+# Override solo para desarrollo local: publica los stores en 127.0.0.1 (con puertos desplazados
+# para no chocar con instancias locales) para `prisma migrate dev`, tests de integración o
+# inspeccionar datos desde el host.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres mongo redis rabbitmq
+services:
+  postgres:
+    ports: ["127.0.0.1:15432:5432"]
+  mongo:
+    ports: ["127.0.0.1:27018:27017"]
+  redis:
+    ports: ["127.0.0.1:16379:6379"]
+  rabbitmq:
+    ports: ["127.0.0.1:15673:5672"]

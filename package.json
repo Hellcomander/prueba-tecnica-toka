@@ -1,0 +1,39 @@
+{
+  "name": "toka-user-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma de gestión de usuarios con microservicios (auth, user, role, audit) y agente de IA con RAG.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "up": "docker compose up -d --build --wait",
+    "up:infra": "docker compose up -d --wait postgres mongo redis rabbitmq",
+    "down": "docker compose down",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:cov": "npm run test:cov --workspaces --if-present",
+    "lint": "eslint .",
+    "lint:arch": "depcruise packages services --config .dependency-cruiser.cjs",
+    "smoke": "node scripts/smoke.mjs",
+    "spike:gemini": "node --env-file-if-exists=.env scripts/spike-gemini.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/jest": "29.5.14",
+    "@types/node": "24.19.2",
+    "dependency-cruiser": "18.7.0",
+    "eslint": "10.14.0",
+    "globals": "17.13.0",
+    "jest": "29.7.0",
+    "ts-jest": "29.4.15",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1"
+  }
+}

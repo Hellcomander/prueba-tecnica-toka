@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@toka/contracts": ["packages/contracts/src"],
+      "@toka/nest-common": ["packages/nest-common/src"]
+    }
+  }
+}

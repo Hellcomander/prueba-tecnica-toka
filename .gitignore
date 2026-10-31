@@ -1,0 +1,38 @@
+# Secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Material de la prueba (no se redistribuye)
+*.pdf
+
+# Dependencias y builds
+node_modules/
+dist/
+coverage/
+!docs/coverage/
+docs/coverage/html/
+*.tsbuildinfo
+.vite/
+
+# Cliente Prisma generado (se genera en postinstall/pretest y en el build de Docker)
+services/*/src/generated/
+
+# Datos locales y llaves generadas en runtime (anclados: no deben tapar carpetas de código
+# como src/infrastructure/keys/)
+/.data/
+/keys/
+/services/*/keys/
+
+# Notas privadas de preparación (no se entregan)
+.private/
+
+# SO / editores
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+npm-debug.log*

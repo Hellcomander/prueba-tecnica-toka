@@ -1,0 +1,29 @@
+{
+  "name": "@toka/ai-agent-service",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agente de IA: RAG sobre la base de conocimiento + tools de solo lectura sobre los microservicios.",
+  "scripts": {
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@google/genai": "2.32.0",
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@nestjs/platform-express": "11.2.8",
+    "@nestjs/swagger": "11.4.7",
+    "@nestjs/terminus": "11.1.1",
+    "@toka/contracts": "0.1.0",
+    "@toka/nest-common": "0.1.0",
+    "class-transformer": "0.5.1",
+    "class-validator": "0.15.1",
+    "ioredis": "5.11.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "tslib": "2.9.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "11.2.8"
+  }
+}

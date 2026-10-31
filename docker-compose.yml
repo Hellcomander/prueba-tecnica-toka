@@ -1,0 +1,114 @@
+name: toka
+
+# Corre sin .env (modo mock): toda variable tiene default `${VAR:-x}`.
+# Solo el gateway publica un puerto al host; el resto vive en redes internas.
+# Las credenciales por defecto son de desarrollo local; .env.example documenta cómo cambiarlas.
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+# Chequeos rápidos solo durante el arranque (start_interval) y espaciados después,
+# para no gastar CPU en estado estable.
+x-healthcheck: &hc
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 30s
+  start_interval: 2s
+
+x-infra: &infra
+  restart: unless-stopped
+  logging: *logging
+  networks: [backend]
+  security_opt: ["no-new-privileges:true"]
+
+services:
+  postgres:
+    <<: *infra
+    image: postgres:17.11-alpine
+    command: ["postgres", "-c", "shared_buffers=64MB", "-c", "max_connections=60"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev_pw}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:-auth_dev_pw}
+      USER_DB_PASSWORD: ${USER_DB_PASSWORD:-user_dev_pw}
+      ROLE_DB_PASSWORD: ${ROLE_DB_PASSWORD:-role_dev_pw}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # -h 127.0.0.1 fuerza TCP: el socket unix responde antes de que termine el init.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d postgres"]
+      <<: *hc
+    mem_limit: 256m
+
+  mongo:
+    <<: *infra
+    image: mongo:8.0.34
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25", "--quiet"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-mongo_dev_pw}
+      MONGO_AUDIT_DB: audit_db
+      MONGO_AUDIT_USER: audit_svc
+      MONGO_AUDIT_PASSWORD: ${MONGO_AUDIT_PASSWORD:-audit_dev_pw}
+    volumes:
+      - mongo-data:/data/db
+      - ./infra/mongo/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Autentica como el usuario de audit vía hostname: el init corre solo en localhost,
+      # así que esto no pasa a healthy hasta que el init terminó. `exec` deja a mongosh como
+      # proceso directo para que Docker lo mate si excede el timeout (si no, se acumulan).
+      test: ["CMD-SHELL", "exec mongosh --quiet --host mongo -u audit_svc -p \"$${MONGO_AUDIT_PASSWORD}\" --authenticationDatabase audit_db audit_db --eval 'quit(db.runCommand({ping:1}).ok ? 0 : 1)'"]
+      <<: *hc
+      timeout: 10s
+      start_period: 60s
+    mem_limit: 512m
+
+  redis:
+    <<: *infra
+    image: redis:7.4.12-alpine
+    # El entrypoint de la imagen solo baja a usuario redis si el comando empieza con redis-server;
+    # como se envuelve en `sh -c` para leer la contraseña del entorno, se fija el usuario aquí.
+    user: redis
+    # Cache y límites efímeros: sin persistencia, noeviction (los límites no deben desaparecer
+    # por presión de memoria) y todas las llaves con TTL.
+    command: >
+      sh -c 'exec redis-server --requirepass "$$REDIS_PASSWORD" --maxmemory 128mb
+      --maxmemory-policy noeviction --save "" --appendonly no'
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_dev_pw}
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=$$REDIS_PASSWORD redis-cli ping | grep -q PONG"]
+      <<: *hc
+    mem_limit: 160m
+
+  rabbitmq:
+    <<: *infra
+    image: rabbitmq:4.3.7-management-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-toka}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbit_dev_pw}
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbit vm_memory_high_watermark {absolute,268435456}"
+    ports:
+      - "127.0.0.1:15672:15672" # UI de administración, solo desde la máquina local
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+    healthcheck:
+      # Chequeo TCP del listener AMQP: equivale a check_port_connectivity sin levantar una VM
+      # de Erlang por chequeo (rabbitmq-diagnostics cuesta ~80 MB y CPU cada vez).
+      test: ["CMD", "nc", "-z", "127.0.0.1", "5672"]
+      <<: *hc
+      start_period: 60s
+    mem_limit: 384m
+
+networks:
+  edge: {}
+  backend: {}
+
+volumes:
+  pg-data: {}
+  mongo-data: {}
+  rabbit-data: {}
