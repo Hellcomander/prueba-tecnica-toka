@@ -26,6 +26,21 @@
 La lógica de retry/DLQ del consumidor AMQP vive en `@toka/nest-common` separada del adaptador,
 así que sí se prueba con unit tests (un mensaje fallido va a `.retry` y, tras 3 intentos, a la DLQ).
 
+## Pruebas de integración (fuera del gate)
+
+`packages/nest-common/test/amqp.int-spec.ts` corre el mismo flujo contra un **RabbitMQ real**
+(topología completa: cola → `.retry` con TTL de 5 s → cola → … → `.dlq`, con el correlationId
+del evento disponible en el handler). Requiere la infraestructura de Docker:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait rabbitmq
+RABBITMQ_URL=amqp://toka:rabbit_dev_pw@127.0.0.1:15673 npm run test:int -w packages/nest-common
+```
+
+Sin `RABBITMQ_URL` la suite se omite. Su primera corrida destapó una carrera real (publicar
+antes de que la topología quedara declarada); por eso `AmqpConnection.consume()` devuelve una
+promesa que resuelve cuando la cola está declarada y suscrita.
+
 ## Resultados
 
 _Se completa en F7 con la tabla por paquete, servicio y front-end._
