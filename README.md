@@ -252,8 +252,8 @@ Lo que está **terminado y verificado** desde un clon limpio, con volúmenes vac
   microservicios, escalera de degradación y límites propios. Funciona con Gemini y sin clave.
 - **374 tests** en verde; cada servicio por encima del umbral de cobertura.
 - **Smoke de 23 comprobaciones**, dos corridas seguidas, incluidas las cinco de la Parte 2.
-- Doce contenedores *healthy*, todos por debajo de su límite de memoria: unos 1,1 GB en total
-  tras dos corridas del smoke.
+- Doce contenedores *healthy*, todos por debajo de su límite de memoria: poco más de 1 GB en
+  total tras dos corridas del smoke.
 - **Golden set de 12 casos** con runner de métricas: 100 % de acierto en mock y en vivo, con los
   reportes commiteados en [`docs/ai/reports/`](docs/ai/reports/).
 - **Ningún secreto en la historia de git**: `npm run scan:secrets` pasa gitleaks sobre todos los
