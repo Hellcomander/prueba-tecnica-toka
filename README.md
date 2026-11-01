@@ -123,7 +123,20 @@ administrador activo, y nadie se suspende a sí mismo— y se resuelven **sin ll
 cada servicio mantiene una proyección local que alimentan los eventos del otro. La ventana de
 consistencia eventual está documentada en `docs/architecture.md`.
 
-Más detalle en **[`docs/architecture.md`](docs/architecture.md)**.
+Más detalle en **[`docs/architecture.md`](docs/architecture.md)**. El porqué de cada una de
+estas decisiones —y lo que cuesta— está en los **[ADR](docs/adr/README.md)**.
+
+### Documentación
+
+| Documento | Qué contiene |
+| --- | --- |
+| [`docs/architecture.md`](docs/architecture.md) | El sistema: servicios, autenticación distribuida, flujos, mensajería, datos y compose |
+| [`docs/adr/`](docs/adr/README.md) | Ocho decisiones de arquitectura con sus alternativas descartadas y lo que se paga por cada una |
+| [`docs/ddd-clean-architecture.md`](docs/ddd-clean-architecture.md) | Cómo se aplican DDD y Clean Architecture en el código, y dónde se aplican a propósito menos |
+| [`docs/service-template.md`](docs/service-template.md) | Cómo construir un servicio nuevo con esta forma, con las trampas que no se ven en los tests |
+| [`docs/ejercicio-4-diagnostico.md`](docs/ejercicio-4-diagnostico.md) | Ejercicio 4: diagnóstico de un incidente con 500s, auditoría que no se guarda y latencia de IA |
+| [`docs/coverage/README.md`](docs/coverage/README.md) | Resultados de cobertura y el razonamiento del umbral |
+| [`docs/spikes.md`](docs/spikes.md) | Pruebas de viabilidad previas: Prisma 7 en CJS, imagen arm64, límites reales de Gemini |
 
 ---
 
@@ -219,7 +232,9 @@ Lo que **falta**:
 
 - **Asistente de IA** (`/assistant` es un marcador de posición): el servicio de agente con RAG,
   búsqueda vectorial y evaluación de calidad no está implementado.
-- **Documento de diagnóstico de incidentes** y los registros de decisión de arquitectura (ADR).
+
+La documentación de la Parte 1 está completa: arquitectura, ocho ADR, DDD y Clean Architecture,
+plantilla de servicio y el **[diagnóstico del ejercicio 4](docs/ejercicio-4-diagnostico.md)**.
 
 ### Solución de problemas
 

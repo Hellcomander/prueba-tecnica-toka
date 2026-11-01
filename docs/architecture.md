@@ -1,7 +1,14 @@
 # Arquitectura: Toka User Platform
 
-> Borrador del Checkpoint 1 (F0). Se completa en F4 con el SVG del diagrama, los ADRs y los
-> flujos verificados contra el sistema corriendo.
+> Vista del sistema completo. El **porqué de cada decisión**, una por una, está en los
+> [ADR](adr/README.md); la **forma del código** dentro de cada servicio, en
+> [`ddd-clean-architecture.md`](ddd-clean-architecture.md); cómo construir un servicio nuevo, en
+> [`service-template.md`](service-template.md). Los diagramas son Mermaid (GitHub y VS Code los
+> renderizan directamente).
+>
+> Los flujos de §5 están verificados contra el sistema corriendo (`node scripts/smoke.mjs`).
+> La Parte 2 (agente de IA) está diseñada aquí pero **todavía no implementada**: ver
+> *Estado y alcance* en el `README.md`.
 
 ## 1. Qué resuelve
 
@@ -208,7 +215,8 @@ prisma/              schema.prisma + migraciones SQL commiteadas
   topología) y `@toka/nest-common` (plomería técnica: logs, errores, guards, AMQP, HTTP
   resiliente). Ningún servicio importa código de otro.
 
-El detalle con ejemplos de código va en `docs/ddd-clean-architecture.md` (F4).
+El detalle, con el código real de cada capa y el mapa de bounded contexts, está en
+**[`ddd-clean-architecture.md`](ddd-clean-architecture.md)**.
 
 ## 9. Observabilidad
 
@@ -239,12 +247,22 @@ El detalle con ejemplos de código va en `docs/ddd-clean-architecture.md` (F4).
 - `docker-compose.dev.yml` publica los stores en `127.0.0.1` con puertos desplazados, solo para
   desarrollo.
 
-## 11. Decisiones descartadas (resumen; cada una tendrá su ADR)
+## 11. Decisiones descartadas (resumen)
 
-| Alternativa | Por qué no |
-|---|---|
-| Keycloak como IdP | Cumple OIDC completo, pero cuesta ~500 MB de RAM y esconde justo lo que la prueba quiere evaluar. Queda como camino a producción (Auth Code + PKCE) |
-| Kafka | Retención y replay que este dominio no necesita; RabbitMQ da routing por tópico, DLQ y menos operación |
-| Validar JWT en el gateway | Rompe zero-trust: los servicios quedarían confiando en la red interna |
-| BFF | Un salto más sin lógica propia que agregar; la SPA habla con el gateway en el mismo origen |
-| Una instancia de Postgres por servicio | Correcto en producción; en una laptop de 8 GB se reemplaza por bases y usuarios separados |
+Cada una con su ADR, donde está el razonamiento completo y lo que se paga por ella.
+
+| Alternativa | Por qué no | ADR |
+|---|---|---|
+| Keycloak como IdP | Cumple OIDC completo, pero cuesta ~500 MB de RAM y esconde justo lo que la prueba quiere evaluar. Queda como camino a producción (Auth Code + PKCE) | [0001](adr/0001-jwt-rs256-validacion-distribuida.md) |
+| Validar JWT en el gateway | Rompe zero-trust: los servicios quedarían confiando en la red interna | [0001](adr/0001-jwt-rs256-validacion-distribuida.md) |
+| Tokens opacos con introspección | Una llamada de red por request y auth como punto único de falla de todo el tráfico | [0001](adr/0001-jwt-rs256-validacion-distribuida.md) |
+| Una instancia de Postgres por servicio | Correcto en producción; en una laptop de 8 GB se reemplaza por bases y usuarios separados | [0002](adr/0002-un-postgres-con-base-por-servicio.md) |
+| SQL Server | ≥ 2 GB de RAM y soporte arm64 pobre | [0002](adr/0002-un-postgres-con-base-por-servicio.md) |
+| Kafka | Retención y replay que este dominio no necesita; RabbitMQ da routing por tópico, DLQ y menos operación | [0003](adr/0003-rabbitmq-topic-con-envelope-versionado.md) |
+| DDD táctico completo también en audit | Un read model sin invariantes no gana nada con agregados | [0004](adr/0004-clean-architecture-verificada.md) |
+| Llamada síncrona user → role para la regla del último admin | Acoplamiento en disponibilidad justo donde más duele | [0005](adr/0005-invariantes-cruzadas-con-proyecciones.md) |
+| Emitir el token sin permisos cuando role no responde | Indistinguible de una cuenta sin acceso: falla abierto y en silencio | [0006](adr/0006-una-sola-llamada-sincrona-que-falla-cerrado.md) |
+| Access token en `localStorage` | Cualquier XSS se lleva la sesión | [0007](adr/0007-refresh-opaco-en-cookie-access-en-memoria.md) |
+| JWT como refresh token | No se puede revocar sin la lista de revocación que el JWT pretendía evitar | [0007](adr/0007-refresh-opaco-en-cookie-access-en-memoria.md) |
+| Un paquete compartido "core" con todo dentro | Termina en un modelo `User` común que anula la separación de contextos | [0008](adr/0008-monorepo-con-dos-paquetes-compartidos.md) |
+| BFF | Un salto más sin lógica propia que agregar; la SPA habla con el gateway en el mismo origen | — |
