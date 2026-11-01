@@ -4,10 +4,49 @@ Sistema de gestión de usuarios construido con microservicios: autenticación, a
 roles, directorio de perfiles y auditoría, con una SPA de administración detrás de un API
 gateway. Está pensado para levantarse completo con un comando y sin configuración previa.
 
-> Este repositorio es la resolución de una prueba técnica. Si vienes a evaluarla, el
-> **[mapa de rúbrica](docs/rubric-map.md)** toma cada viñeta del enunciado y dice dónde está y
-> cómo comprobarla; el apartado [Estado y alcance](#estado-y-alcance) dice con precisión qué
-> está terminado y qué no.
+> Este repositorio es la resolución de una prueba técnica. El apartado
+> [Estado y alcance](#estado-y-alcance) dice con precisión qué está terminado y qué no.
+
+---
+
+## Entregables
+
+Cada viñeta de la sección «Entregables esperados» del enunciado, con su enlace directo. El
+**[mapa de rúbrica](docs/rubric-map.md)** va más allá: recorre los cinco ejercicios viñeta por
+viñeta —requisitos técnicos, entregables y criterios de evaluación— y añade **con qué comando se
+comprueba cada uno**.
+
+**Arquitectura**
+
+- Diagramas de arquitectura y justificación técnica → [`docs/architecture.md`](docs/architecture.md) (dos diagramas Mermaid) y los ocho [ADR](docs/adr/README.md), cada uno con sus alternativas descartadas
+- Diseño del `docker-compose.yml` → [`docker-compose.yml`](docker-compose.yml), explicado en [`architecture.md` §10](docs/architecture.md)
+- Aplicación de DDD y Clean Architecture → [`docs/ddd-clean-architecture.md`](docs/ddd-clean-architecture.md)
+
+**Microservicios**
+
+- Código fuente de todos los microservicios → [`services/`](services): `auth`, `user`, `role`, `audit` y `ai-agent`, más los dos paquetes compartidos en [`packages/`](packages)
+- Dockerfiles para cada microservicio → [`services/*/Dockerfile`](services), más los del [gateway](infra/gateway/Dockerfile) y la [SPA](web/Dockerfile)
+- `docker-compose.yml` funcional completo → [`docker-compose.yml`](docker-compose.yml): 12 contenedores con healthcheck, límite de memoria y usuario no-root
+- Tests unitarios con coverage report → [`docs/coverage/README.md`](docs/coverage/README.md) (política, exclusiones justificadas y resultados) · `npm run test:cov`
+- Documentación de ejecución del sistema → [Arranque rápido](#arranque-rápido), un comando y sin clave de API
+
+**IA y agentes**
+
+- Código del microservicio de IA → [`services/ai-agent-service/`](services/ai-agent-service)
+- Pipeline de embeddings → [`docs/ai/rag-pipeline.md`](docs/ai/rag-pipeline.md) y la [base de conocimiento](services/ai-agent-service/knowledge-base)
+- Documentación de la estrategia de prompt engineering → [`docs/ai/prompt-engineering.md`](docs/ai/prompt-engineering.md)
+- Código de evaluación de respuestas → [`scripts/eval-agent.mjs`](scripts/eval-agent.mjs) y el [golden set](scripts/eval/golden-set.mjs) · resultados en [`docs/ai/evaluation.md`](docs/ai/evaluation.md) y [`docs/ai/reports/`](docs/ai/reports)
+- Ejemplo de uso integrado con los microservicios → [`docs/ai/README.md`](docs/ai/README.md), cinco `curl` copiables
+
+**Front-end**
+
+- Código fuente de la aplicación → [`web/`](web)
+- Configuración de state management → [`web/src/state/`](web/src/state), un store Zustand por dominio
+- Tests de componentes → `npm test -w @toka/web` (55 tests con Jest + React Testing Library)
+
+**Análisis**
+
+- Respuesta del ejercicio de diagnóstico → [`docs/ejercicio-4-diagnostico.md`](docs/ejercicio-4-diagnostico.md)
 
 ---
 
@@ -144,17 +183,17 @@ estas decisiones —y lo que cuesta— está en los **[ADR](docs/adr/README.md)*
 
 ### Documentación
 
-| Documento                                                            | Qué contiene                                                                                       |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| [`docs/rubric-map.md`](docs/rubric-map.md)                           | **Empieza por aquí si vas a evaluar:** cada viñeta del enunciado con dónde está y cómo comprobarla |
-| [`docs/architecture.md`](docs/architecture.md)                       | El sistema: servicios, autenticación distribuida, flujos, mensajería, datos y compose              |
-| [`docs/adr/`](docs/adr/README.md)                                    | Ocho decisiones de arquitectura con sus alternativas descartadas y lo que se paga por cada una     |
-| [`docs/ddd-clean-architecture.md`](docs/ddd-clean-architecture.md)   | Cómo se aplican DDD y Clean Architecture en el código, y dónde se aplican a propósito menos        |
-| [`docs/service-template.md`](docs/service-template.md)               | Cómo construir un servicio nuevo con esta forma, con las trampas que no se ven en los tests        |
-| [`docs/ejercicio-4-diagnostico.md`](docs/ejercicio-4-diagnostico.md) | Ejercicio 4: diagnóstico de un incidente con 500s, auditoría que no se guarda y latencia de IA     |
-| [`docs/ai/`](docs/ai/README.md)                                      | El agente: diseño, pipeline de RAG, prompts y evaluación, con ejemplos de `curl`                   |
-| [`docs/coverage/README.md`](docs/coverage/README.md)                 | Resultados de cobertura y el razonamiento del umbral                                               |
-| [`docs/spikes.md`](docs/spikes.md)                                   | Pruebas de viabilidad previas: Prisma 7 en CJS, imagen arm64, límites reales de Gemini             |
+| Documento                                                            | Qué contiene                                                                                     |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [`docs/rubric-map.md`](docs/rubric-map.md)                           | Cada viñeta de los cinco ejercicios del enunciado, con dónde está y con qué comando se comprueba |
+| [`docs/architecture.md`](docs/architecture.md)                       | El sistema: servicios, autenticación distribuida, flujos, mensajería, datos y compose            |
+| [`docs/adr/`](docs/adr/README.md)                                    | Ocho decisiones de arquitectura con sus alternativas descartadas y lo que se paga por cada una   |
+| [`docs/ddd-clean-architecture.md`](docs/ddd-clean-architecture.md)   | Cómo se aplican DDD y Clean Architecture en el código, y dónde se aplican a propósito menos      |
+| [`docs/service-template.md`](docs/service-template.md)               | Cómo construir un servicio nuevo con esta forma, con las trampas que no se ven en los tests      |
+| [`docs/ejercicio-4-diagnostico.md`](docs/ejercicio-4-diagnostico.md) | Ejercicio 4: diagnóstico de un incidente con 500s, auditoría que no se guarda y latencia de IA   |
+| [`docs/ai/`](docs/ai/README.md)                                      | El agente: diseño, pipeline de RAG, prompts y evaluación, con ejemplos de `curl`                 |
+| [`docs/coverage/README.md`](docs/coverage/README.md)                 | Resultados de cobertura y el razonamiento del umbral                                             |
+| [`docs/spikes.md`](docs/spikes.md)                                   | Pruebas de viabilidad previas: Prisma 7 en CJS, imagen arm64, límites reales de Gemini           |
 
 ---
 
