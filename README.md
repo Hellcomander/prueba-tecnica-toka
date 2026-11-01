@@ -4,8 +4,10 @@ Sistema de gestión de usuarios construido con microservicios: autenticación, a
 roles, directorio de perfiles y auditoría, con una SPA de administración detrás de un API
 gateway. Está pensado para levantarse completo con un comando y sin configuración previa.
 
-> Este repositorio es la resolución de una prueba técnica. El apartado
-> [Estado y alcance](#estado-y-alcance) dice con precisión qué está terminado y qué no.
+> Este repositorio es la resolución de una prueba técnica. Si vienes a evaluarla, el
+> **[mapa de rúbrica](docs/rubric-map.md)** toma cada viñeta del enunciado y dice dónde está y
+> cómo comprobarla; el apartado [Estado y alcance](#estado-y-alcance) dice con precisión qué
+> está terminado y qué no.
 
 ---
 
@@ -144,6 +146,7 @@ estas decisiones —y lo que cuesta— está en los **[ADR](docs/adr/README.md)*
 
 | Documento | Qué contiene |
 | --- | --- |
+| [`docs/rubric-map.md`](docs/rubric-map.md) | **Empieza por aquí si vas a evaluar:** cada viñeta del enunciado con dónde está y cómo comprobarla |
 | [`docs/architecture.md`](docs/architecture.md) | El sistema: servicios, autenticación distribuida, flujos, mensajería, datos y compose |
 | [`docs/adr/`](docs/adr/README.md) | Ocho decisiones de arquitectura con sus alternativas descartadas y lo que se paga por cada una |
 | [`docs/ddd-clean-architecture.md`](docs/ddd-clean-architecture.md) | Cómo se aplican DDD y Clean Architecture en el código, y dónde se aplican a propósito menos |
@@ -180,6 +183,7 @@ npm ci             # instala todos los workspaces y genera los clientes de Prism
 | `npm run test:cov` | Igual, con cobertura y umbral |
 | `npm run eval` | Evalúa el agente contra el golden set y escribe el reporte |
 | `npm run smoke` | Prueba de punta a punta contra el stack real (**requiere `up:dev`**) |
+| `npm run scan:secrets` | Busca secretos en toda la historia de git (necesita `gitleaks`) |
 | `npm run lint` · `npm run lint:arch` | Estilo · regla de dependencias entre capas |
 | `npm run typecheck` | TypeScript en todos los workspaces |
 | `npm run web:dev` | Vite en `:5173` contra el backend del compose |
@@ -206,10 +210,13 @@ incluidas las trampas que no se ven en los tests.
 npm run up:dev && npm run smoke
 ```
 
-El smoke comprueba 18 cosas contra el sistema real: el inicio de sesión, que el mismo token lo
-acepten los cuatro servicios, los `401`/`403`, que crear un usuario propague perfil, rol y
+El smoke comprueba **23 cosas** contra el sistema real: el inicio de sesión, que el mismo token
+lo acepten los cuatro servicios, los `401`/`403`, que crear un usuario propague perfil, rol y
 auditoría con el mismo `correlationId`, que suspender cierre el acceso, el conflicto de
-versiones, la rotación del token de refresco y el bloqueo por intentos fallidos.
+versiones, la rotación del token de refresco y el bloqueo por intentos fallidos. Las cinco
+últimas son del asistente: que cite la base de conocimiento, que use una herramienta con el
+token de quien pregunta, que el `viewer` no reciba ni herramientas ni pasajes restringidos, que
+niegue por omisión y que la consulta quede auditada sin guardar el texto de la pregunta.
 
 **Cobertura:** el umbral es del 70 % en líneas, sentencias y funciones por servicio. Las ramas se
 informan pero no bloquean, y los adaptadores de infraestructura quedan fuera del umbral a
@@ -247,21 +254,25 @@ Lo que está **terminado y verificado** desde un clon limpio, con volúmenes vac
 - **Smoke de 23 comprobaciones**, dos corridas seguidas, incluidas las cinco de la Parte 2.
 - Doce contenedores *healthy*, todos por debajo de su límite de memoria: unos 1,1 GB en total
   tras dos corridas del smoke.
+- **Golden set de 12 casos** con runner de métricas: 100 % de acierto en mock y en vivo, con los
+  reportes commiteados en [`docs/ai/reports/`](docs/ai/reports/).
+- **Ningún secreto en la historia de git**: `npm run scan:secrets` pasa gitleaks sobre todos los
+  commits. Las dos únicas excepciones son contraseñas sintéticas de tests, declaradas una por
+  una y con su razón en [`.gitleaks.toml`](.gitleaks.toml).
 
 El asistente también se probó **contra Gemini real** (con `.env`): responde citando los pasajes,
 llama a `get_user_stats` para los datos en vivo y, cuando el modelo principal no contesta a
 tiempo, baja al de respaldo sin que la comprobación falle.
 
-- **Golden set de 12 casos** con runner de métricas: 100 % de acierto en mock y en vivo, con los
-  reportes commiteados en [`docs/ai/reports/`](docs/ai/reports/).
+La documentación está completa: arquitectura, ocho ADR, DDD y Clean Architecture, plantilla de
+servicio, el **[diagnóstico del ejercicio 4](docs/ejercicio-4-diagnostico.md)**, la
+documentación del agente y el **[mapa de rúbrica](docs/rubric-map.md)**, que enlaza cada viñeta
+del enunciado con su artefacto y con la forma de comprobarlo.
 
-Lo que **falta**:
-
-- El **mapa de rúbrica** (`docs/rubric-map.md`), que enlaza cada viñeta del enunciado con su
-  artefacto y su forma de verificarlo, y el empaquetado final.
-
-La documentación de la Parte 1 está completa: arquitectura, ocho ADR, DDD y Clean Architecture,
-plantilla de servicio y el **[diagnóstico del ejercicio 4](docs/ejercicio-4-diagnostico.md)**.
+**Lo que a propósito no está** —SQL Server, Kafka, una instancia de base por servicio, Keycloak,
+LangChain, OpenTelemetry y el *transactional outbox*— está listado con su razón al final del
+[mapa de rúbrica](docs/rubric-map.md#lo-que-no-está-y-por-qué). Ninguna de esas ausencias es un
+descuido: todas tienen su decisión escrita.
 
 ### Solución de problemas
 

@@ -1,0 +1,29 @@
+# Configuración de gitleaks para este repositorio.
+#
+# Se parte de las reglas por defecto y solo se silencian hallazgos revisados uno por uno.
+# Cada excepción dice qué es y por qué no abre nada; no hay exclusiones por comodín.
+#
+#   npm run scan:secrets    # historia completa de git
+#
+title = "Toka · gitleaks"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Contraseñas sintéticas escritas a mano en los tests unitarios de auth ('Equivocada1234' y la
+constante ADMIN_PASSWORD de las fixtures). Solo existen dentro de Jest, contra repositorios
+en memoria: no corresponden a ninguna cuenta real ni se usan fuera del test.
+"""
+targetRules = ["generic-api-key"]
+paths = ['''services/auth-service/src/application/application\.spec\.ts''']
+
+[[allowlists]]
+description = """
+Contraseña fija del hash "dummy" de argon2. No es una credencial: se hashea al arrancar para que
+verificar un correo inexistente cueste lo mismo que uno real y no se pueda enumerar cuentas
+midiendo el tiempo de respuesta. Ver argon2-password-hasher.ts.
+"""
+targetRules = ["generic-api-key"]
+regexes = ['''contrasena-que-nadie-usa-0000''']
