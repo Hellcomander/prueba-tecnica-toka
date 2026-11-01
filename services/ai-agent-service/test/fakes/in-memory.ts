@@ -154,7 +154,6 @@ export const testOptions = (overrides: Partial<AgentOptions> = {}): AgentOptions
   maxToolSteps: 4,
   maxOutputTokens: 512,
   retrievalLimit: 5,
-  retrievalMinScore: 0.1,
   cacheTtlSeconds: 300,
   pricing: { inputPerMillion: 0.3, outputPerMillion: 2.5, embeddingPerMillion: 0.15 },
   ...overrides,
@@ -219,6 +218,9 @@ export class CountingEmbeddingProvider implements EmbeddingProvider {
   constructor(private readonly inner: EmbeddingProvider = new MockEmbeddingProvider(64)) {}
   get dimensions(): number {
     return this.inner.dimensions;
+  }
+  get minScore(): number {
+    return this.inner.minScore;
   }
   async embed(texts: string[], task: EmbeddingTask): Promise<EmbeddingResult> {
     this.calls += texts.length;

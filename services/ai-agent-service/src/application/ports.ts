@@ -37,7 +37,6 @@ export interface AgentOptions {
   maxToolSteps: number;
   maxOutputTokens: number;
   retrievalLimit: number;
-  retrievalMinScore: number;
   cacheTtlSeconds: number;
   pricing: ModelPricing;
 }

@@ -13,6 +13,7 @@ import {
   type LlmProvider,
   type LlmResult,
   RATE_LIMITER,
+  type RateDecision,
   type RateLimiter,
   type SearchHit,
   TOOL_GATEWAY,
@@ -70,14 +71,7 @@ export class AskQuestionUseCase {
     //    cuota: comprobar después de embeber ya habría costado una llamada.
     const decision = await this.limiter.check(asker.userId);
     if (!decision.allowed) {
-      throw new DomainError(
-        'AI_RATE_LIMITED',
-        'unprocessable',
-        decision.scope?.startsWith('user')
-          ? 'Alcanzaste tu límite de consultas al asistente. Intenta de nuevo en un momento.'
-          : 'El asistente alcanzó su límite global de consultas. Intenta de nuevo en un momento.',
-        decision.retryAfterSeconds,
-      );
+      throw new DomainError('AI_RATE_LIMITED', 'unprocessable', rateLimitMessage(decision.scope), decision.retryAfterSeconds);
     }
 
     // 2. Caché. La clave incluye los permisos porque dos usuarios con permisos distintos ven
@@ -108,7 +102,7 @@ export class AskQuestionUseCase {
     const hits = await this.store.search(embedded.vectors[0], {
       limit: this.options.retrievalLimit,
       permissions: asker.permissions,
-      minScore: this.options.retrievalMinScore,
+      minScore: this.embeddings.minScore,
     });
     const retrievalMs = this.clock.now() - retrievalStart;
 
@@ -339,6 +333,27 @@ function reasonOf(error: unknown): string {
       return 'model_unavailable';
     default:
       return 'provider_error';
+  }
+}
+
+/**
+ * El mensaje tiene que corresponder al límite que se alcanzó. Decir "intenta de nuevo en un
+ * momento" junto a un `Retry-After` de cuatro horas es peor que no decir nada: el usuario
+ * reintenta, vuelve a fallar y concluye que el sistema está roto. Los límites por minuto se
+ * esperan; los diarios hay que nombrarlos.
+ */
+function rateLimitMessage(scope: RateDecision['scope']): string {
+  switch (scope) {
+    case 'user_rpm':
+      return 'Vas muy rápido para el asistente. Espera unos segundos y vuelve a preguntar.';
+    case 'global_rpm':
+      return 'El asistente está atendiendo muchas consultas a la vez. Espera unos segundos y vuelve a preguntar.';
+    case 'user_daily_tokens':
+      return 'Agotaste tu presupuesto de uso del asistente para hoy. Se renueva a medianoche (UTC).';
+    case 'global_rpd':
+      return 'El asistente agotó su cuota de consultas del día. Se renueva a medianoche (UTC).';
+    default:
+      return 'El asistente no puede atender la consulta en este momento.';
   }
 }
 

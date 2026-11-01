@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { RateDecision, RateLimiter } from '../../domain/ports';
-import { ENV, type Env } from '../config/env';
+import { ENV, type Env, resolveProvider } from '../config/env';
 import { RedisService } from './redis.service';
 
 /**
@@ -21,13 +21,24 @@ import { RedisService } from './redis.service';
  * Si Redis no responde, **se deja pasar** y se anota: el limitador protege la cuota, no la
  * seguridad, y convertir una avería de la caché en una caída del asistente sería desproporcionado.
  * Las decisiones de autorización no pasan por aquí.
+ *
+ * **El presupuesto diario de tokens solo se aplica cuando los tokens se pagan.** Con el proveedor
+ * mock no hay cuota del proveedor ni factura que proteger, y mantenerlo encendido tenía un efecto
+ * perverso: quien probara el asistente sin clave de API —el camino por defecto de este
+ * repositorio— se quedaba bloqueado **durante horas** tras dos docenas de preguntas, por agotar
+ * un presupuesto de algo que no cuesta nada. Los límites por minuto sí siguen activos en los dos
+ * modos: esos protegen al sistema, no al bolsillo.
  */
 @Injectable()
 export class RedisRateLimiter implements RateLimiter {
+  private readonly enforceTokenBudget: boolean;
+
   constructor(
     private readonly redis: RedisService,
     @Inject(ENV) private readonly env: Env,
-  ) {}
+  ) {
+    this.enforceTokenBudget = resolveProvider(env) === 'gemini';
+  }
 
   async check(userId: string): Promise<RateDecision> {
     const minute = Math.floor(Date.now() / 60_000);
@@ -37,12 +48,12 @@ export class RedisRateLimiter implements RateLimiter {
         this.bump(`agent:rl:global:m:${minute}`, 70),
         this.bump(`agent:rl:user:${userId}:m:${minute}`, 70),
         this.bump(`agent:rl:global:d:${day}`, 86_400),
-        this.redis.get(`agent:rl:user:${userId}:tok:${day}`).then((v) => Number(v ?? 0)),
+        this.enforceTokenBudget ? this.redis.get(`agent:rl:user:${userId}:tok:${day}`).then((v) => Number(v ?? 0)) : Promise.resolve(0),
       ]);
 
       if (userRpm > this.env.AI_USER_RPM) return deny('user_rpm', secondsToNextMinute());
       if (globalRpm > this.env.AI_GLOBAL_RPM) return deny('global_rpm', secondsToNextMinute());
-      if (userTokens >= this.env.AI_USER_DAILY_TOKENS) return deny('user_daily_tokens', secondsToMidnight());
+      if (this.enforceTokenBudget && userTokens >= this.env.AI_USER_DAILY_TOKENS) return deny('user_daily_tokens', secondsToMidnight());
       if (globalRpd > this.env.AI_GLOBAL_RPD) return deny('global_rpd', secondsToMidnight());
       return { allowed: true };
     } catch {

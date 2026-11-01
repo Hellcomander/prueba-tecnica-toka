@@ -46,7 +46,6 @@ export class AppModule {
       maxToolSteps: env.AI_MAX_TOOL_STEPS,
       maxOutputTokens: env.AI_MAX_OUTPUT_TOKENS,
       retrievalLimit: env.AI_RETRIEVAL_LIMIT,
-      retrievalMinScore: env.AI_RETRIEVAL_MIN_SCORE,
       cacheTtlSeconds: env.AI_CACHE_TTL_SECONDS,
       pricing: {
         inputPerMillion: env.AI_PRICE_INPUT_PER_MTOK,

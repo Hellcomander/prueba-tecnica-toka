@@ -83,6 +83,13 @@ export interface EmbeddingResult {
 export interface EmbeddingProvider {
   readonly model: string;
   readonly dimensions: number;
+  /**
+   * Similitud mínima para considerar relevante un pasaje, **en el espacio de este modelo**.
+   * Vive aquí y no en la configuración general porque no es una preferencia del sistema sino una
+   * propiedad del modelo: un embedding semántico y uno léxico no producen la misma escala, así
+   * que un único umbral compartido descarta aciertos en uno o cuela ruido en el otro.
+   */
+  readonly minScore: number;
   embed(texts: string[], task: EmbeddingTask): Promise<EmbeddingResult>;
 }
 

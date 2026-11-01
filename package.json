@@ -27,7 +27,8 @@
     "lint:arch": "depcruise packages services --config .dependency-cruiser.cjs",
     "web:dev": "npm run dev --workspace @toka/web",
     "smoke": "node scripts/smoke.mjs",
-    "spike:gemini": "node --env-file-if-exists=.env scripts/spike-gemini.mjs"
+    "spike:gemini": "node --env-file-if-exists=.env scripts/spike-gemini.mjs",
+    "eval": "node scripts/eval-agent.mjs"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

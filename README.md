@@ -149,6 +149,7 @@ estas decisiones —y lo que cuesta— está en los **[ADR](docs/adr/README.md)*
 | [`docs/ddd-clean-architecture.md`](docs/ddd-clean-architecture.md) | Cómo se aplican DDD y Clean Architecture en el código, y dónde se aplican a propósito menos |
 | [`docs/service-template.md`](docs/service-template.md) | Cómo construir un servicio nuevo con esta forma, con las trampas que no se ven en los tests |
 | [`docs/ejercicio-4-diagnostico.md`](docs/ejercicio-4-diagnostico.md) | Ejercicio 4: diagnóstico de un incidente con 500s, auditoría que no se guarda y latencia de IA |
+| [`docs/ai/`](docs/ai/README.md) | El agente: diseño, pipeline de RAG, prompts y evaluación, con ejemplos de `curl` |
 | [`docs/coverage/README.md`](docs/coverage/README.md) | Resultados de cobertura y el razonamiento del umbral |
 | [`docs/spikes.md`](docs/spikes.md) | Pruebas de viabilidad previas: Prisma 7 en CJS, imagen arm64, límites reales de Gemini |
 
@@ -177,6 +178,7 @@ npm ci             # instala todos los workspaces y genera los clientes de Prism
 | `npm run down` / `npm run reset` | Apaga / apaga y borra los datos |
 | `npm test` | Tests unitarios de todos los paquetes y servicios |
 | `npm run test:cov` | Igual, con cobertura y umbral |
+| `npm run eval` | Evalúa el agente contra el golden set y escribe el reporte |
 | `npm run smoke` | Prueba de punta a punta contra el stack real (**requiere `up:dev`**) |
 | `npm run lint` · `npm run lint:arch` | Estilo · regla de dependencias entre capas |
 | `npm run typecheck` | TypeScript en todos los workspaces |
@@ -241,7 +243,7 @@ Lo que está **terminado y verificado** desde un clon limpio, con volúmenes vac
 - Los cinco microservicios, el gateway, la SPA y las cinco bases de datos (incluida Qdrant).
 - El **asistente de IA**: RAG con ACL por permisos, siete herramientas de solo lectura sobre los
   microservicios, escalera de degradación y límites propios. Funciona con Gemini y sin clave.
-- **367 tests** en verde; cada servicio por encima del umbral de cobertura.
+- **374 tests** en verde; cada servicio por encima del umbral de cobertura.
 - **Smoke de 23 comprobaciones**, dos corridas seguidas, incluidas las cinco de la Parte 2.
 - Doce contenedores *healthy*, todos por debajo de su límite de memoria: unos 1,1 GB en total
   tras dos corridas del smoke.
@@ -250,10 +252,13 @@ El asistente también se probó **contra Gemini real** (con `.env`): responde ci
 llama a `get_user_stats` para los datos en vivo y, cuando el modelo principal no contesta a
 tiempo, baja al de respaldo sin que la comprobación falle.
 
+- **Golden set de 12 casos** con runner de métricas: 100 % de acierto en mock y en vivo, con los
+  reportes commiteados en [`docs/ai/reports/`](docs/ai/reports/).
+
 Lo que **falta**:
 
-- **Evaluación del agente**: el golden set, el runner de métricas (acierto, p50/p95, tokens,
-  costo) y la documentación de IA (`docs/ai/`) son el siguiente paso.
+- El **mapa de rúbrica** (`docs/rubric-map.md`), que enlaza cada viñeta del enunciado con su
+  artefacto y su forma de verificarlo, y el empaquetado final.
 
 La documentación de la Parte 1 está completa: arquitectura, ocho ADR, DDD y Clean Architecture,
 plantilla de servicio y el **[diagnóstico del ejercicio 4](docs/ejercicio-4-diagnostico.md)**.
@@ -263,6 +268,8 @@ plantilla de servicio y el **[diagnóstico del ejercicio 4](docs/ejercicio-4-dia
 | Síntoma | Causa y salida |
 | --- | --- |
 | `429` al iniciar sesión | Límite del gateway (5/min por IP). Espera un minuto |
+| El asistente responde `422 AI_RATE_LIMITED` | Son los límites propios del agente (4 consultas por minuto y usuario). El mensaje y la cabecera `Retry-After` dicen cuánto falta |
+| El asistente dice «el modelo principal agotó su cuota» | El *free tier* de Gemini permite 20 peticiones diarias al modelo primario. El de respaldo sigue respondiendo; la cuota se renueva a medianoche del Pacífico |
 | `npm run smoke` falla con `ECONNREFUSED` | El stack se levantó con `npm run up`, que no publica los puertos de los servicios. Usa `npm run up:dev` |
 | `lint:arch` dice que la versión de Node no está soportada | Estás en Node 25. `nvm use` |
 | El puerto 8080 está ocupado | `GATEWAY_PORT=8099 npm run up` |

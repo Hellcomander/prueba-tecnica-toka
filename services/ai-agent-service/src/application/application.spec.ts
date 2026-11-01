@@ -13,6 +13,7 @@ import {
   TEST_DOCS,
 } from '../../test/fakes/in-memory';
 import type { AgentAnswer } from '../domain/answer/answer';
+
 import { chunkDocument, parseFrontMatter } from '../domain/knowledge/chunk';
 import type { DomainError } from '../domain/shared/domain-error';
 import { MockEmbeddingProvider, MockLlmProvider } from '../infrastructure/llm/mock-provider';
@@ -33,8 +34,10 @@ interface Harness {
   events: FakeEventSink;
 }
 
-async function harness(options: { llm?: ScriptedLlmProvider | MockLlmProvider; tools?: FakeToolGateway; overrides?: Parameters<typeof testOptions>[0] } = {}): Promise<Harness> {
-  const embeddings = new MockEmbeddingProvider(64);
+async function harness(
+  options: { llm?: ScriptedLlmProvider | MockLlmProvider; tools?: FakeToolGateway; overrides?: Parameters<typeof testOptions>[0]; minScore?: number } = {},
+): Promise<Harness> {
+  const embeddings = new MockEmbeddingProvider(64, options.minScore ?? 0.1);
   const store = await seededStore(embeddings);
   const llm = options.llm ?? new MockLlmProvider();
   const tools = options.tools ?? new FakeToolGateway();
@@ -261,7 +264,7 @@ describe('AskQuestionUseCase · escalera de degradación', () => {
 
   it('sin modelo y sin pasajes responde 503 en vez de inventar', async () => {
     const llm = new ScriptedLlmProvider({ 'scripted-primary': [new Error('caído')], 'scripted-fallback': [new Error('caído')] });
-    const { ask } = await harness({ llm, overrides: { retrievalMinScore: 0.99 } });
+    const { ask } = await harness({ llm, minScore: 0.99 });
 
     const error = await errorOf(ask.execute({ question: 'una pregunta sin respuesta en la base' }, admin));
     expect(error.code).toBe('AI_UNAVAILABLE');
@@ -288,15 +291,25 @@ describe('AskQuestionUseCase · límites y caché', () => {
     const error = await errorOf(ask.execute({ question: '¿Quién puede suspender usuarios?' }, admin));
     expect(error.code).toBe('AI_RATE_LIMITED');
     expect(error.retryAfterSeconds).toBe(37);
-    expect(error.message).toMatch(/tu límite/);
+    expect(error.message).toMatch(/unos segundos/);
     expect((llm as MockLlmProvider & { calls?: unknown[] }).calls ?? []).toHaveLength(0);
   });
 
-  it('distingue el límite global del propio del usuario', async () => {
-    const { ask, limiter } = await harness();
-    limiter.deny({ allowed: false, scope: 'global_rpm', retryAfterSeconds: 12 });
-    const error = await errorOf(ask.execute({ question: '¿Quién puede suspender usuarios?' }, admin));
-    expect(error.message).toMatch(/límite global/);
+  it('el mensaje corresponde al límite que se alcanzó, no a uno genérico', async () => {
+    // Decir "intenta en un momento" junto a un Retry-After de cuatro horas hace que el usuario
+    // reintente, vuelva a fallar y concluya que el sistema está roto.
+    const casos: Array<['user_rpm' | 'global_rpm' | 'user_daily_tokens' | 'global_rpd', RegExp]> = [
+      ['user_rpm', /unos segundos/],
+      ['global_rpm', /muchas consultas a la vez/],
+      ['user_daily_tokens', /presupuesto .* para hoy|medianoche/],
+      ['global_rpd', /cuota .* del día|medianoche/],
+    ];
+    for (const [scope, esperado] of casos) {
+      const { ask, limiter } = await harness();
+      limiter.deny({ allowed: false, scope, retryAfterSeconds: 60 });
+      const error = await errorOf(ask.execute({ question: '¿Quién puede suspender usuarios?' }, admin));
+      expect(error.message).toMatch(esperado);
+    }
   });
 
   it('la segunda pregunta idéntica se sirve de caché sin llamar al modelo', async () => {
@@ -404,6 +417,24 @@ describe('IngestKnowledgeBaseUseCase', () => {
     expect(second.embedded).toBe(0);
     expect(second.skipped).toBe(second.totalChunks);
     expect(embeddings.calls).toBe(first.totalChunks);
+  });
+
+  it('cambiar de modelo de embeddings reindexa todo, aunque el texto sea idéntico', async () => {
+    const store = new InMemoryVectorStore();
+    const conGemini = new CountingEmbeddingProvider();
+    Object.defineProperty(conGemini, 'model', { value: 'gemini-embedding-001' });
+    const primera = await new IngestKnowledgeBaseUseCase(source, conGemini, store).execute();
+    expect(primera.embedded).toBe(primera.totalChunks);
+
+    // Mismo texto, mismas dimensiones, OTRO modelo: los vectores viejos pertenecen a un espacio
+    // distinto y consultarlos con los nuevos devuelve ruido, no un error. Hay que reindexar.
+    const conMock = new CountingEmbeddingProvider();
+    Object.defineProperty(conMock, 'model', { value: 'mock-embedding' });
+    const segunda = await new IngestKnowledgeBaseUseCase(source, conMock, store).execute();
+    expect(segunda.embedded).toBe(segunda.totalChunks);
+    expect(segunda.skipped).toBe(0);
+    // Y no quedan puntos huérfanos del modelo anterior.
+    expect(await store.count()).toBe(segunda.totalChunks);
   });
 
   it('force vuelve a embeber aunque nada haya cambiado', async () => {

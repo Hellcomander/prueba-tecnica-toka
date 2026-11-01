@@ -108,11 +108,13 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
   private readonly client: GoogleGenAI;
   readonly model: string;
   readonly dimensions: number;
+  readonly minScore: number;
 
   constructor(@Inject(ENV) env: Env) {
     this.client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY, httpOptions: { timeout: env.AI_LLM_TIMEOUT_MS, retryOptions: { attempts: 1 } } });
     this.model = env.GEMINI_EMBEDDING_MODEL;
     this.dimensions = env.GEMINI_EMBEDDING_DIM;
+    this.minScore = env.AI_RETRIEVAL_MIN_SCORE;
   }
 
   async embed(texts: string[], task: EmbeddingTask): Promise<EmbeddingResult> {

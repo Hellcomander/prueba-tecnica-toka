@@ -49,9 +49,18 @@ export class MockLlmProvider implements LlmProvider {
 export class MockEmbeddingProvider implements EmbeddingProvider {
   readonly model = 'mock-embedding';
   readonly dimensions: number;
+  /**
+   * Más bajo que el de Gemini (0.35 por defecto) y no por capricho: medido contra la base de
+   * conocimiento real, los aciertos de este embedding léxico caen entre 0.30 y 0.42 y el ruido
+   * por debajo de 0.20. Con el umbral pensado para un embedding semántico se descartaban
+   * respuestas correctas —"¿Se pueden borrar usuarios?" acertaba el pasaje con 0.307 y se
+   * filtraba—. Es la razón de que el umbral viva en el proveedor y no en la configuración.
+   */
+  readonly minScore: number;
 
-  constructor(dimensions = 768) {
+  constructor(dimensions = 768, minScore = 0.25) {
     this.dimensions = dimensions;
+    this.minScore = minScore;
   }
 
   async embed(texts: string[], _task: EmbeddingTask): Promise<EmbeddingResult> {
@@ -81,12 +90,21 @@ export function hashVector(text: string, dimensions: number): number[] {
   return magnitude > 0 ? vector.map((v) => v / magnitude) : vector;
 }
 
+/**
+ * Límite de palabra consciente de Unicode. **`\b` no sirve aquí**: en JavaScript se define sobre
+ * `[A-Za-z0-9_]`, así que la posición después de una vocal acentuada no es un límite de palabra
+ * y `/\bqué\b/` no casa nunca con "¿Qué roles existen?". Costó un caso del golden set: la
+ * herramienta `list_roles` no se disparaba mientras `get_user_stats` sí, porque "Cuántos"
+ * termina en una letra ASCII y "Qué" no.
+ */
+const w = (body: string) => new RegExp(`(?<!\\p{L})(?:${body})(?!\\p{L})`, 'iu');
+
 const TOOL_INTENTS: Array<{ tool: string; pattern: RegExp; args?: (q: string) => Record<string, unknown> }> = [
-  { tool: 'get_user_stats', pattern: /\b(cu[aá]ntos|n[uú]mero de|total de)\b[^?]*\busuarios?\b/i },
-  { tool: 'get_audit_stats', pattern: /\b(cu[aá]ntos|total de)\b[^?]*\b(eventos?|registros?)\b/i },
-  { tool: 'get_audit_events', pattern: /\b(auditor[ií]a|accesos? fallidos?|intentos? fallidos?|inicios? de sesi[oó]n|reporte de accesos?)\b/i, args: () => ({ limit: 20 }) },
-  { tool: 'list_roles', pattern: /\b(qu[eé]|cu[aá]les|lista de)\b[^?]*\broles?\b/i },
-  { tool: 'search_users', pattern: /\b(busca|lista|mu[eé]strame)\b[^?]*\busuarios?\b/i, args: () => ({ pageSize: 20 }) },
+  { tool: 'get_user_stats', pattern: w('(?:cu[aá]ntos|n[uú]mero de|total de)[^?]*usuarios?') },
+  { tool: 'get_audit_stats', pattern: w('(?:cu[aá]ntos|total de)[^?]*(?:eventos?|registros?)') },
+  { tool: 'get_audit_events', pattern: w('(?:auditor[ií]a|accesos? fallidos?|intentos? fallidos?|inicios? de sesi[oó]n|reporte de accesos?)'), args: () => ({ limit: 20 }) },
+  { tool: 'list_roles', pattern: w('(?:qu[eé]|cu[aá]les|lista de)[^?]*roles?') },
+  { tool: 'search_users', pattern: w('(?:busca|lista|mu[eé]strame)[^?]*usuarios?'), args: () => ({ pageSize: 20 }) },
 ];
 
 function chooseTool(question: string, available: ReadonlySet<string>): ToolRequest | null {

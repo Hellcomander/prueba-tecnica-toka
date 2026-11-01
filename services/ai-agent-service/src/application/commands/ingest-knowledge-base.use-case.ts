@@ -24,10 +24,17 @@ const BATCH_SIZE = 20;
 /**
  * Indexa la base de conocimiento en el store vectorial.
  *
- * Es **idempotente por hash de contenido**: en cada arranque se comparan los hashes de los chunks
- * con los ya indexados y solo se embeben los que cambiaron. Reiniciar el contenedor cuesta cero
- * llamadas al proveedor de embeddings, que es justo lo que uno quiere con una cuota gratuita y
- * con un servicio que puede reiniciarse varias veces en un despliegue.
+ * Es **idempotente por hash**: en cada arranque se comparan los hashes de los chunks con los ya
+ * indexados y solo se embeben los que cambiaron. Reiniciar el contenedor cuesta cero llamadas al
+ * proveedor de embeddings, que es justo lo que uno quiere con una cuota gratuita y con un
+ * servicio que puede reiniciarse varias veces en un despliegue.
+ *
+ * **El hash cubre el modelo y la dimensión, no solo el texto**, y esa es la parte que no es
+ * obvia: un vector solo significa algo dentro del espacio del modelo que lo produjo. Dos modelos
+ * distintos de 768 dimensiones —`gemini-embedding-001` y el proveedor mock, por ejemplo— generan
+ * espacios incompatibles, así que consultar uno con vectores del otro devuelve ruido: ni un
+ * error, ni una excepción, solo un asistente que contesta "no lo sé" a todo. Incluyendo el modelo
+ * en el hash, cambiarlo invalida el índice entero y se reconstruye solo.
  *
  * Los lotes son de 20 por la misma razón: una llamada por chunk gasta cuota en handshakes.
  */
@@ -43,9 +50,10 @@ export class IngestKnowledgeBaseUseCase {
     const started = Date.now();
     await this.store.ensureCollection(this.embeddings.dimensions);
 
+    const space = `${this.embeddings.model}:${this.embeddings.dimensions}`;
     const chunks: StoredChunk[] = (await this.source.load()).map((chunk) => ({
       ...chunk,
-      contentHash: createHash('sha256').update(chunk.text).digest('hex').slice(0, 32),
+      contentHash: createHash('sha256').update(`${space}\n${chunk.text}`).digest('hex').slice(0, 32),
     }));
 
     const indexed = options.force ? new Map<string, string>() : await this.store.indexedHashes();

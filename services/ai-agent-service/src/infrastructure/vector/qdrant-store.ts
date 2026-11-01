@@ -35,8 +35,10 @@ export class QdrantVectorStore implements VectorStore {
     const size = existing?.result?.config?.params?.vectors?.size;
     if (size === dimensions) return;
     if (size !== undefined && size !== dimensions) {
-      // Cambiar de modelo de embeddings cambia la dimensión: mezclar vectores de dos modelos da
-      // resultados sin sentido en silencio, así que la colección se recrea.
+      // Un cambio de dimensión hace imposible siquiera guardar el vector, así que la colección se
+      // recrea. El caso traicionero es el contrario —dos modelos distintos con la MISMA
+      // dimensión— que Qdrant acepta sin quejarse y devuelve ruido; ese lo cubre el hash de la
+      // ingesta, que incluye el modelo (ver IngestKnowledgeBaseUseCase).
       this.logger.warn({ event: 'kb.collection_recreated', from: size, to: dimensions }, 'kb.collection_recreated');
       await this.request('DELETE', `/collections/${this.collection}`, undefined, [200, 404]);
     }
