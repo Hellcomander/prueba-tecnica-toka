@@ -27,8 +27,12 @@ type Dialog =
 export function UsersPage() {
   const isReal = API_MODE === 'real';
   const hasPermission = useAuthStore((state) => state.hasPermission);
+  const currentUserId = useAuthStore((state) => state.user?.id ?? null);
   const canWrite = hasPermission('users:write');
   const canAssignRoles = hasPermission('roles:assign');
+  // Sin ninguna acción posible, la columna entera sobra: una cabecera "Acciones" sobre celdas
+  // vacías ocupa espacio y sugiere que falta algo. Quien solo lee, ve una tabla de solo lectura.
+  const canActOnRows = canWrite || canAssignRoles;
 
   const status = useUsersStore((state) => state.status);
   const error = useUsersStore((state) => state.error);
@@ -174,7 +178,7 @@ export function UsersPage() {
                       <th scope="col">Puesto</th>
                       <th scope="col">Estado</th>
                       <th scope="col">Roles</th>
-                      <th scope="col">Acciones</th>
+                      {canActOnRows && <th scope="col">Acciones</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -211,27 +215,33 @@ export function UsersPage() {
                             )}
                           </div>
                         </td>
+                        {canActOnRows && (
                         <td>
                           <div className="row-actions">
                             {canWrite && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="button button-ghost"
-                                  aria-label={`Editar a ${user.fullName}`}
-                                  onClick={() => setDialog({ kind: 'edit', user })}
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button button-ghost"
-                                  aria-label={`${user.status === 'ACTIVE' ? 'Suspender' : 'Reactivar'} a ${user.fullName}`}
-                                  onClick={() => setDialog({ kind: 'status', user })}
-                                >
-                                  {user.status === 'ACTIVE' ? 'Suspender' : 'Reactivar'}
-                                </button>
-                              </>
+                              <button
+                                type="button"
+                                className="button button-ghost"
+                                aria-label={`Editar a ${user.fullName}`}
+                                onClick={() => setDialog({ kind: 'edit', user })}
+                              >
+                                Editar
+                              </button>
+                            )}
+                            {/*
+                              Sobre la propia fila no se ofrece suspender: el dominio lo rechaza
+                              con SELF_SUSPENSION, así que enseñar el botón sería invitar a un
+                              error seguro. Editar sí queda: el propio perfil sí se puede cambiar.
+                            */}
+                            {canWrite && user.id !== currentUserId && (
+                              <button
+                                type="button"
+                                className="button button-ghost"
+                                aria-label={`${user.status === 'ACTIVE' ? 'Suspender' : 'Reactivar'} a ${user.fullName}`}
+                                onClick={() => setDialog({ kind: 'status', user })}
+                              >
+                                {user.status === 'ACTIVE' ? 'Suspender' : 'Reactivar'}
+                              </button>
                             )}
                             {canAssignRoles && (
                               <button
@@ -245,6 +255,7 @@ export function UsersPage() {
                             )}
                           </div>
                         </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

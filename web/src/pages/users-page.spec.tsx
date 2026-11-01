@@ -57,6 +57,21 @@ const beto: UserView = {
   updatedAt: '2026-10-05T10:00:00.000Z',
 };
 
+/** La fila de quien está mirando: renderUsers abre sesión con el id 'me'. */
+const yo: UserView = {
+  id: 'me',
+  email: 'admin@toka.local',
+  fullName: 'Ana Admin',
+  department: 'Dirección',
+  jobTitle: 'CTO',
+  status: 'ACTIVE',
+  statusReason: null,
+  roles: ['admin'],
+  version: 1,
+  createdAt: '2026-10-01T10:00:00.000Z',
+  updatedAt: '2026-10-02T10:00:00.000Z',
+};
+
 const page = (items: UserView[], total = items.length, pageNumber = 1) => ({
   items,
   page: pageNumber,
@@ -252,5 +267,30 @@ describe('página de usuarios', () => {
     await waitFor(() => expect(roles.replaceUserRoles).toHaveBeenCalledWith('user-ana', ['role-soporte']));
     // La columna de roles es una proyección: se vuelve a consultar en vez de darla por hecha.
     await waitFor(() => expect(users.list.mock.calls.length).toBeGreaterThan(callsBefore));
+  });
+
+  it('no ofrece suspenderse a uno mismo: el botón no existe en la propia fila', async () => {
+    // El dominio lo rechaza con SELF_SUSPENSION, así que la interfaz no debe invitar al error.
+    users.list.mockResolvedValue(page([yo, beto]));
+    renderUsers();
+    await screen.findByText('Beto Suspendido');
+
+    expect(screen.queryByRole('button', { name: 'Suspender a Ana Admin' })).not.toBeInTheDocument();
+    // Editar el propio perfil sí es legítimo y sigue disponible.
+    expect(screen.getByRole('button', { name: 'Editar a Ana Admin' })).toBeInTheDocument();
+    // Y sobre otra persona el botón sigue estando.
+    expect(screen.getByRole('button', { name: 'Reactivar a Beto Suspendido' })).toBeInTheDocument();
+  });
+
+  it('sin permisos de escritura ni de asignación, la columna Acciones no se dibuja', async () => {
+    renderUsers(['users:read']);
+    await screen.findByText('Ana Admin');
+
+    const table = within(screen.getByRole('table'));
+    expect(table.queryByRole('columnheader', { name: 'Acciones' })).not.toBeInTheDocument();
+    expect(table.getByRole('columnheader', { name: 'Usuario' })).toBeInTheDocument();
+    // Cuatro columnas, no cinco con la última vacía.
+    expect(table.getAllByRole('columnheader')).toHaveLength(4);
+    expect(table.queryByRole('button', { name: /Editar a/ })).not.toBeInTheDocument();
   });
 });

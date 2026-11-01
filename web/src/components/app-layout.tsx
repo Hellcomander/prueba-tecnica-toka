@@ -42,8 +42,7 @@ export function AppLayout() {
     <div className="app-shell">
       <aside className="sidebar">
         <Link className="brand" to="/" aria-label="Toka, inicio">
-          <span className="brand-mark">t</span>
-          <span>toka<span className="brand-dot">.</span></span>
+          <img className="brand-logo" src="/toka-logo.png" alt="Toka" />
         </Link>
         <p className="nav-caption">PLATAFORMA</p>
         <nav className="main-nav" aria-label="Navegación principal">

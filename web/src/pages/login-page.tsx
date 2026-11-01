@@ -54,7 +54,7 @@ export function LoginPage() {
     <main className="login-page">
       <section className="login-card">
         <Link className="brand login-brand" to="/" aria-label="Toka">
-          <span className="brand-mark">t</span><span>toka<span className="brand-dot">.</span></span>
+          <img className="brand-logo" src="/toka-logo.png" alt="Toka" />
         </Link>
         <p className="eyebrow">PLATAFORMA DE GESTIÓN</p>
         <h1>Qué bueno verte.</h1>
