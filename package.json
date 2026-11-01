@@ -14,9 +14,11 @@
   ],
   "scripts": {
     "up": "docker compose up -d --build --wait",
-    "up:infra": "docker compose up -d --wait postgres mongo redis rabbitmq",
+    "up:dev": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait",
+    "up:infra": "docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres mongo redis rabbitmq",
     "up:web": "docker compose up -d --build --wait web gateway",
     "down": "docker compose down",
+    "reset": "docker compose down -v",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",

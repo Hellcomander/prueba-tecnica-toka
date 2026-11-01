@@ -43,4 +43,27 @@ promesa que resuelve cuando la cola está declarada y suscrita.
 
 ## Resultados
 
-_Se completa en F7 con la tabla por paquete, servicio y front-end._
+Medidos con `npm run test:cov` (y `npm run test -w @toka/web`) sobre un clon limpio. El gate es
+70% en lines, statements y functions; 80% en los paquetes compartidos.
+
+| Paquete / servicio | Tests | Statements | Lines | Functions | Branches (informativo) |
+|---|---:|---:|---:|---:|---:|
+| `@toka/contracts` | 14 | 100% | 100% | 100% | 100% |
+| `@toka/nest-common` | 44 | 97.33% | 99.43% | 94.87% | 85.22% |
+| `auth-service` | 48 | 97.76% | 98.55% | 97.56% | 82.16% |
+| `user-service` | 49 | 99.70% | 100% | 98.71% | 85.61% |
+| `role-service` | 37 | 99.36% | 100% | 98.16% | 85.13% |
+| `audit-service` | 33 | 99.09% | 100% | 94.44% | 87.09% |
+| `@toka/web` | 42 | — | — | — | — |
+| **Total** | **267** | | | | |
+
+El front-end se prueba con Jest + React Testing Library montando los componentes reales con
+dobles de la capa de servicios. No tiene umbral de cobertura: la prueba pedía el 70% por
+servicio, y en una interfaz el número engaña (renderizar un componente cubre sus líneas sin
+comprobar que haga lo correcto). Lo que se cubre está elegido por riesgo: el candado del refresco
+entre pestañas, la restauración de sesión, la paginación por cursor, el conflicto de versiones y
+que quien no tiene permiso no vea acciones de escritura.
+
+Las cifras de ramas quedan por debajo del 90% sobre todo por el código defensivo de los
+adaptadores y por las ramas que genera `emitDecoratorMetadata`; es exactamente el motivo por el
+que la métrica se informa y no bloquea.
