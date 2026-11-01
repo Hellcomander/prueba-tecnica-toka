@@ -9,11 +9,13 @@
   },
   "workspaces": [
     "packages/*",
-    "services/*"
+    "services/*",
+    "web"
   ],
   "scripts": {
     "up": "docker compose up -d --build --wait",
     "up:infra": "docker compose up -d --wait postgres mongo redis rabbitmq",
+    "up:web": "docker compose up -d --build --wait web gateway",
     "down": "docker compose down",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -21,6 +23,7 @@
     "test:cov": "npm run test:cov --workspaces --if-present",
     "lint": "eslint .",
     "lint:arch": "depcruise packages services --config .dependency-cruiser.cjs",
+    "web:dev": "npm run dev --workspace @toka/web",
     "smoke": "node scripts/smoke.mjs",
     "spike:gemini": "node --env-file-if-exists=.env scripts/spike-gemini.mjs"
   },

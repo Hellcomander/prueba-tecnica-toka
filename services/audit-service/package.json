@@ -4,7 +4,11 @@
   "private": true,
   "description": "Auditoría: read model append-only de todos los eventos del sistema (MongoDB).",
   "scripts": {
-    "start": "node dist/main.js"
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "jest --passWithNoTests",
+    "test:cov": "tsc -p tsconfig.json && jest --coverage"
   },
   "dependencies": {
     "@nestjs/common": "11.2.8",

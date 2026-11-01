@@ -127,6 +127,93 @@ services:
       start_period: 60s
     mem_limit: 384m
 
+  web:
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+      args:
+        VITE_API_MODE: ${VITE_API_MODE:-mock}
+    image: toka/web:dev
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+    networks: [backend]
+    mem_limit: 96m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/"]
+      <<: *hc
+
+  gateway:
+    restart: unless-stopped
+    build: { context: ., dockerfile: infra/gateway/Dockerfile }
+    image: toka/gateway:dev
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+    networks: [edge, backend]
+    mem_limit: 96m
+    depends_on:
+      web: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      <<: *hc
+
+  # auth-service es el IdP: dueño de las credenciales y única fuente de los JWT. El volumen
+  # auth-keys guarda el par RS256 para que los tokens sobrevivan a un reinicio (si no, cada
+  # arranque invalidaría las sesiones de todos). No depende de role-service: la llamada S1 es
+  # resiliente (breaker + copia stale), así que auth arranca aunque role todavía no esté.
+  auth-service:
+    <<: *node-svc
+    build: { context: ., dockerfile: services/auth-service/Dockerfile }
+    image: toka/auth-service:dev
+    environment:
+      <<: *node-env
+      PORT: "3001"
+      DATABASE_URL: postgresql://auth_svc:${AUTH_DB_PASSWORD:-auth_dev_pw}@postgres:5432/auth_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pw}@redis:6379
+      ROLE_SERVICE_URL: http://role-service:3003
+      JWT_KEYS_DIR: /keys
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin123!demo}
+      SEED_AUDITOR_PASSWORD: ${SEED_AUDITOR_PASSWORD:-Auditor123!demo}
+      SEED_VIEWER_PASSWORD: ${SEED_VIEWER_PASSWORD:-Viewer123!demo}
+    volumes:
+      - auth-keys:/keys
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health/ready"]
+      <<: *hc
+      start_period: 60s
+
+  user-service:
+    <<: *node-svc
+    build: { context: ., dockerfile: services/user-service/Dockerfile }
+    image: toka/user-service:dev
+    environment:
+      <<: *node-env
+      PORT: "3002"
+      DATABASE_URL: postgresql://user_svc:${USER_DB_PASSWORD:-user_dev_pw}@postgres:5432/user_db
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pw}@redis:6379
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3002/health/ready"]
+      <<: *hc
+      start_period: 60s
+
   role-service:
     <<: *node-svc
     build: { context: ., dockerfile: services/role-service/Dockerfile }
@@ -144,6 +231,23 @@ services:
       <<: *hc
       start_period: 60s
 
+  # audit-service es read model puro sobre Mongo: no necesita Postgres ni Redis.
+  audit-service:
+    <<: *node-svc
+    build: { context: ., dockerfile: services/audit-service/Dockerfile }
+    image: toka/audit-service:dev
+    environment:
+      <<: *node-env
+      PORT: "3004"
+      MONGO_URL: mongodb://audit_svc:${MONGO_AUDIT_PASSWORD:-audit_dev_pw}@mongo:27017/audit_db?authSource=audit_db
+    depends_on:
+      mongo: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3004/health/ready"]
+      <<: *hc
+      start_period: 60s
+
 networks:
   edge: {}
   backend: {}
@@ -152,3 +256,4 @@ volumes:
   pg-data: {}
   mongo-data: {}
   rabbit-data: {}
+  auth-keys: {}

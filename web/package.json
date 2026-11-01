@@ -1,0 +1,32 @@
+{
+  "name": "@toka/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest --config jest.config.cjs --runInBand"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "5.2.2",
+    "@toka/contracts": "0.1.0",
+    "axios": "1.21.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-hook-form": "7.66.0",
+    "react-router-dom": "6.30.1",
+    "zod": "4.6.7",
+    "zustand": "5.0.8"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@vitejs/plugin-react": "5.0.4",
+    "jest-environment-jsdom": "29.7.0",
+    "vite": "7.1.12"
+  }
+}

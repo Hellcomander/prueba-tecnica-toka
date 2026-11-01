@@ -2,6 +2,13 @@
 # para no chocar con instancias locales) para `prisma migrate dev`, tests de integración o
 # inspeccionar datos desde el host.
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres mongo redis rabbitmq
+#
+# También publica los servicios (13001-13004) para que `npm run smoke` los pruebe directamente.
+# El smoke necesita hacer más de cinco logins seguidos (lockout, usuario suspendido, 403 de
+# viewer) y el gateway limita /api/v1/auth/login a 5 r/m por IP: medido a través del gateway,
+# un 429 de nginx se confundiría con el 429 del lockout, que es justo lo que se quiere probar.
+# El smoke sigue comprobando el borde (ruteo, 404 de /internal/*, headers, rate limit) contra
+# el gateway en :8080. En producción ningún servicio publica puertos: solo entra el gateway.
 services:
   postgres:
     ports: ["127.0.0.1:15432:5432"]
@@ -11,3 +18,11 @@ services:
     ports: ["127.0.0.1:16379:6379"]
   rabbitmq:
     ports: ["127.0.0.1:15673:5672"]
+  auth-service:
+    ports: ["127.0.0.1:13001:3001"]
+  user-service:
+    ports: ["127.0.0.1:13002:3002"]
+  role-service:
+    ports: ["127.0.0.1:13003:3003"]
+  audit-service:
+    ports: ["127.0.0.1:13004:3004"]

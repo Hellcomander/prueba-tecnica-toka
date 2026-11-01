@@ -1,3 +1,5 @@
+// user_db: dueño de los perfiles. Los IDs (UUID) los trae el evento account.registered (los genera
+// auth-service), no la base. Las credenciales y los roles viven en otros servicios.
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -8,14 +10,46 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Perfil de usuario (agregado UserProfile). `status` ∈ ACTIVE | SUSPENDED.
 model UserProfile {
-  id        String   @id @db.Uuid
-  email     String   @unique @db.VarChar(254)
-  fullName  String   @map("full_name") @db.VarChar(120)
-  status    String   @default("active") @db.VarChar(16)
-  version   Int      @default(1)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id           String   @id @db.Uuid
+  email        String   @unique @db.VarChar(254)
+  fullName     String   @map("full_name") @db.VarChar(120)
+  department   String?  @db.VarChar(80)
+  jobTitle     String?  @map("job_title") @db.VarChar(80)
+  status       String   @default("ACTIVE") @db.VarChar(16)
+  /// Motivo de la última suspensión (null si está activo o no se indicó).
+  statusReason String?  @map("status_reason") @db.VarChar(200)
+  /// Bloqueo optimista: cada update exige la versión leída. También viaja en user.status_changed.
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@index([status])
+  @@index([createdAt])
   @@map("user_profiles")
+}
+
+/// Proyección local de los roles de cada usuario (desde role.assignments_changed). Sin FK a
+/// user_profiles a propósito: el snapshot puede llegar antes que account.registered.
+/// Alimenta la regla del último admin activo y las estadísticas por rol sin llamar a role-service.
+model UserRolesView {
+  userId             String   @id @map("user_id") @db.Uuid
+  /// Nombres de rol (los roles de sistema son inmutables, así que `admin` es estable).
+  roles              String[]
+  /// Descarta snapshots viejos: solo se aplica uno con versión mayor a la guardada.
+  assignmentsVersion Int      @default(0) @map("assignments_version")
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([roles], type: Gin)
+  @@map("user_roles_view")
+}
+
+/// Idempotencia de consumidores: el insert va en la misma transacción que el efecto.
+model ProcessedEvent {
+  eventId     String   @id @map("event_id") @db.Uuid
+  type        String   @db.VarChar(64)
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+
+  @@map("processed_events")
 }
