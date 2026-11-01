@@ -140,7 +140,10 @@ export class AskQuestionUseCase {
         usage = loop.usage;
         toolCalls = attemptCalls;
         answer = { text: loop.text, mode: rung.mode, model: loop.model };
-        if (rung.mode === 'fallback_model') flags.push('degraded:fallback_model');
+        // El motivo viaja con la señal. "Bajé al modelo de respaldo" no es accionable; "el
+        // primario agotó su cuota diaria" sí, y es una respuesta distinta de "tardó demasiado":
+        // una se arregla esperando minutos y la otra esperando horas o cambiando de modelo.
+        if (rung.mode === 'fallback_model') flags.push(`degraded:fallback_model:${reasonOf(lastError)}`);
         break;
       } catch (error) {
         // Se guarda el último fallo y se baja un peldaño. El adaptador ya registró el detalle
@@ -173,7 +176,7 @@ export class AskQuestionUseCase {
       answer = { text: '', mode: 'rag_only', model: 'none' };
       citations = hits.slice(0, 3).map((hit, i) => toCitation(hit, i + 1));
       text = ragOnlyAnswer(citations);
-      flags.push('degraded:rag_only');
+      flags.push(`degraded:rag_only:${reasonOf(lastError)}`);
       validationPassed = false;
     } else {
       // Sin modelo y sin pasajes no hay nada honesto que decir.
@@ -317,6 +320,25 @@ export class AskQuestionUseCase {
 
   private cacheKey(questionHash: string, permissions: readonly string[]): string {
     return `agent:answer:${this.options.promptVersion}:${[...permissions].sort().join(',')}:${questionHash}`;
+  }
+}
+
+/**
+ * Traduce el fallo del peldaño anterior a un motivo corto y estable. Se queda en vocabulario
+ * propio (`rate_limited`, `timeout`, `model_unavailable`) y no filtra el mensaje del proveedor,
+ * que puede traer URLs, identificadores de proyecto y detalles de facturación.
+ */
+function reasonOf(error: unknown): string {
+  const code = (error as { code?: string } | null)?.code;
+  switch (code) {
+    case 'AI_PROVIDER_RATE_LIMITED':
+      return 'rate_limited';
+    case 'AI_PROVIDER_TIMEOUT':
+      return 'timeout';
+    case 'AI_MODEL_NOT_AVAILABLE':
+      return 'model_unavailable';
+    default:
+      return 'provider_error';
   }
 }
 

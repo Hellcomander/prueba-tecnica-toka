@@ -42,6 +42,59 @@ export function translateGeminiError(error: unknown, model: string): DomainError
   return new DomainError('AI_PROVIDER_ERROR', 'unavailable', `El proveedor del modelo no respondió (${status ?? 'sin estado'}).`);
 }
 
+/**
+ * Campos estructurados del error, para el log. Existe porque registrar
+ * `message.slice(0, 300)` corta justo donde empieza lo único accionable: **qué** cuota se agotó,
+ * cuál era el límite y cuándo se restablece. Pasó de verdad: con el log truncado, un 429 por
+ * agotar las 20 peticiones diarias del modelo primario era indistinguible de un 429 por ráfaga,
+ * y la diferencia es "espera un minuto" contra "espera trece horas".
+ */
+export interface ProviderErrorFacts {
+  status: number | null;
+  code: string;
+  /** p. ej. `generate_content_free_tier_requests`. */
+  quotaMetric?: string;
+  quotaLimit?: string;
+  /** Modelo contra el que Google contabiliza la cuota: no siempre es el que se pidió. */
+  quotaModel?: string;
+  retryAfterSeconds?: number;
+}
+
+interface GoogleErrorDetail {
+  '@type': string;
+  retryDelay?: string;
+  violations?: Array<{ quotaMetric?: string; quotaValue?: string; quotaDimensions?: Record<string, string> }>;
+}
+
+export function describeProviderError(error: unknown): ProviderErrorFacts {
+  const shape = (error ?? {}) as ProviderErrorShape;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const translated = translateGeminiError(error, '');
+  const facts: ProviderErrorFacts = { status: shape.status ?? shape.code ?? null, code: translated.code };
+  if (translated.retryAfterSeconds) facts.retryAfterSeconds = translated.retryAfterSeconds;
+
+  for (const detail of parseDetails(message)) {
+    if (!detail['@type'].endsWith('QuotaFailure')) continue;
+    const violation = detail.violations?.[0];
+    if (!violation) continue;
+    if (violation.quotaMetric) facts.quotaMetric = violation.quotaMetric.split('/').pop();
+    if (violation.quotaValue) facts.quotaLimit = violation.quotaValue;
+    if (violation.quotaDimensions?.model) facts.quotaModel = violation.quotaDimensions.model;
+  }
+  return facts;
+}
+
+function parseDetails(message: string): GoogleErrorDetail[] {
+  const start = message.indexOf('{');
+  if (start === -1) return [];
+  try {
+    const body = JSON.parse(message.slice(start)) as { error?: { details?: GoogleErrorDetail[] } };
+    return body.error?.details ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /** `RetryInfo.retryDelay` llega como "27s" dentro del cuerpo JSON del error. */
 export function retryDelaySeconds(message: string): number | null {
   const match = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(message);

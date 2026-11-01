@@ -1,4 +1,4 @@
-import { retryDelaySeconds, translateGeminiError } from './gemini-errors';
+import { describeProviderError, retryDelaySeconds, translateGeminiError } from './gemini-errors';
 
 /**
  * Fixtures con la forma real que documenta Google para `RESOURCE_EXHAUSTED`. El spike de F0 no
@@ -50,5 +50,49 @@ describe('traducción de errores de Gemini', () => {
   it('retryDelaySeconds redondea hacia arriba y devuelve null si no viene', () => {
     expect(retryDelaySeconds('{"retryDelay":"1.2s"}')).toBe(2);
     expect(retryDelaySeconds('sin nada')).toBeNull();
+  });
+});
+
+describe('datos estructurados del error, para el log', () => {
+  it('extrae qué cuota se agotó, su límite y cuándo se restablece', () => {
+    // Respuesta real de Gemini al agotar las 20 peticiones diarias del free tier.
+    const agotada = Object.assign(
+      new Error(
+        JSON.stringify({
+          error: {
+            code: 429,
+            status: 'RESOURCE_EXHAUSTED',
+            details: [
+              {
+                '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+                violations: [
+                  {
+                    quotaMetric: 'generativelanguage.googleapis.com/generate_content_free_tier_requests',
+                    quotaValue: '20',
+                    quotaDimensions: { location: 'global', model: 'gemini-3.6-flash' },
+                  },
+                ],
+              },
+              { '@type': 'type.googleapis.com/google.rpc.RetryInfo', retryDelay: '47631s' },
+            ],
+          },
+        }),
+      ),
+      { status: 429 },
+    );
+
+    expect(describeProviderError(agotada)).toEqual({
+      status: 429,
+      code: 'AI_PROVIDER_RATE_LIMITED',
+      quotaMetric: 'generate_content_free_tier_requests',
+      quotaLimit: '20',
+      quotaModel: 'gemini-3.6-flash',
+      retryAfterSeconds: 47_631,
+    });
+  });
+
+  it('un error sin cuerpo JSON no rompe el log', () => {
+    expect(describeProviderError(Object.assign(new Error('boom'), { status: 500 }))).toEqual({ status: 500, code: 'AI_PROVIDER_ERROR' });
+    expect(describeProviderError(undefined)).toEqual({ status: null, code: 'AI_PROVIDER_ERROR' });
   });
 });

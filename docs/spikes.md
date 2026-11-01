@@ -74,9 +74,16 @@ Decisiones:
   más cuota en forzarlo. La forma documentada (`RESOURCE_EXHAUSTED` con
   `google.rpc.RetryInfo.retryDelay` y `QuotaFailure`) se cubre con un fixture en los tests del
   adaptador.
-- **Límites del free tier:** Google los aplica **por proyecto** (no por key), dependen del tier
-  del proyecto y solo se publican en AI Studio (*Rate limits*); el RPD se reinicia a medianoche
-  hora del Pacífico. Una fuente secundaria (octubre 2026, no oficial) indica del orden de
+- **Límites del free tier (confirmados en F5, 1-nov-2026):** al agotar la cuota, el 429 trae el
+  detalle exacto: `generate_content_free_tier_requests`, **límite 20 al día** para
+  `gemini-3.5-flash` (Google lo contabiliza contra el bucket `gemini-3.6-flash`), con
+  `retryDelay: 47631s` ≈ 13 h, hasta medianoche hora del Pacífico. `gemini-3.5-flash-lite` no se
+  agotó en ninguna prueba. **Consecuencia de diseño:** con el modelo primario, la cuota de Google
+  se agota antes que el limitador propio, así que la escalera de degradación no es un caso raro
+  sino el camino habitual en un día de pruebas. Por eso la señal de la respuesta lleva el motivo
+  (`degraded:fallback_model:rate_limited`) y no solo "se degradó".
+- Google aplica los límites **por proyecto** (no por key) y solo se publican en AI Studio
+  (*Rate limits*). Una fuente secundaria (octubre 2026, no oficial) indica del orden de
   10 RPM / 500 RPD para Flash-Lite y ~20 RPD para Flash; que 30 llamadas concurrentes no dieran
   429 sugiere que este proyecto tiene límites mayores. Por eso el rate limiter propio arranca
   conservador y configurable (`AI_GLOBAL_RPM=8`, `AI_GLOBAL_RPD=200`, `AI_USER_RPM=4`,

@@ -241,7 +241,7 @@ Lo que está **terminado y verificado** desde un clon limpio, con volúmenes vac
 - Los cinco microservicios, el gateway, la SPA y las cinco bases de datos (incluida Qdrant).
 - El **asistente de IA**: RAG con ACL por permisos, siete herramientas de solo lectura sobre los
   microservicios, escalera de degradación y límites propios. Funciona con Gemini y sin clave.
-- **363 tests** en verde; cada servicio por encima del umbral de cobertura.
+- **367 tests** en verde; cada servicio por encima del umbral de cobertura.
 - **Smoke de 23 comprobaciones**, dos corridas seguidas, incluidas las cinco de la Parte 2.
 - Doce contenedores *healthy*, todos por debajo de su límite de memoria: unos 1,1 GB en total
   tras dos corridas del smoke.

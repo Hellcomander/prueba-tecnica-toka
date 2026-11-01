@@ -55,9 +55,9 @@ Medidos con `npm run test:cov` (y `npm run test -w @toka/web`) sobre un clon lim
 | `user-service` | 49 | 99.70% | 100% | 98.71% | 85.61% |
 | `role-service` | 37 | 99.36% | 100% | 98.16% | 85.13% |
 | `audit-service` | 33 | 99.09% | 100% | 94.44% | 87.09% |
-| `ai-agent-service` | 84 | 86.75% | 87.86% | 80.90% | 69.09% |
-| `@toka/web` | 54 | — | — | — | — |
-| **Total** | **363** | | | | |
+| `ai-agent-service` | 87 | 86.75% | 87.86% | 80.90% | 69.09% |
+| `@toka/web` | 55 | — | — | — | — |
+| **Total** | **367** | | | | |
 
 `ai-agent-service` queda por debajo del resto a propósito, no por descuido: una parte grande de
 ese servicio son adaptadores cuya respuesta la pone un sistema externo (Gemini, Qdrant, Redis) y

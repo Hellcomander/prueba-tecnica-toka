@@ -131,13 +131,28 @@ describe('página del asistente', () => {
     expect(screen.getByText(/Sin GEMINI_API_KEY/)).toBeInTheDocument();
   });
 
-  it('marca la degradación a modelo de respaldo', async () => {
-    agent.query.mockResolvedValue(answer({ mode: 'fallback_model', flags: ['degraded:fallback_model'] }));
-    renderAssistant();
+  it('al degradar dice por qué: agotar la cuota no es lo mismo que tardar demasiado', async () => {
+    agent.query.mockResolvedValue(answer({ mode: 'fallback_model', flags: ['degraded:fallback_model:rate_limited'] }));
+    const { unmount } = renderAssistant();
     await askFor('¿Quién puede suspender usuarios?');
 
     expect(await screen.findByText('MODELO DE RESPALDO')).toBeInTheDocument();
-    expect(screen.getByText('El modelo principal no respondió; contestó el de respaldo.')).toBeInTheDocument();
+    expect(screen.getByText('El modelo principal agotó su cuota con el proveedor; contestó el de respaldo.')).toBeInTheDocument();
+    unmount();
+
+    useAgentStore.getState().reset();
+    agent.query.mockResolvedValue(answer({ mode: 'fallback_model', flags: ['degraded:fallback_model:timeout'] }));
+    renderAssistant();
+    await askFor('¿Quién puede suspender usuarios?');
+    expect(await screen.findByText('El modelo principal no respondió dentro del plazo; contestó el de respaldo.')).toBeInTheDocument();
+  });
+
+  it('una señal de degradación sin motivo sigue leyéndose (compatibilidad)', async () => {
+    agent.query.mockResolvedValue(answer({ mode: 'rag_only', flags: ['degraded:rag_only'] }));
+    renderAssistant();
+    await askFor('¿Quién puede suspender usuarios?');
+
+    expect(await screen.findByText(/Ningún modelo pudo responder/)).toBeInTheDocument();
   });
 
   it('muestra la herramienta usada y distingue la que falló', async () => {

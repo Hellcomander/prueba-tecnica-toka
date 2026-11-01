@@ -216,8 +216,23 @@ describe('AskQuestionUseCase · escalera de degradación', () => {
 
     const answer = await ask.execute({ question: '¿Quién puede suspender usuarios?' }, admin);
     expect(answer.mode).toBe('fallback_model');
-    expect(answer.flags).toContain('degraded:fallback_model');
+    expect(answer.flags).toContain('degraded:fallback_model:provider_error');
     expect(events.published[0].mode).toBe('fallback_model');
+  });
+
+  it('la señal dice POR QUÉ se degradó: agotar la cuota no es lo mismo que tardar demasiado', async () => {
+    const quotaError = Object.assign(new Error('quota'), { code: 'AI_PROVIDER_RATE_LIMITED', kind: 'unprocessable' });
+    const timeoutError = Object.assign(new Error('deadline'), { code: 'AI_PROVIDER_TIMEOUT', kind: 'unavailable' });
+
+    for (const [error, esperado] of [
+      [quotaError, 'degraded:fallback_model:rate_limited'],
+      [timeoutError, 'degraded:fallback_model:timeout'],
+    ] as const) {
+      const llm = new ScriptedLlmProvider({ 'scripted-primary': [error], 'scripted-fallback': [{ text: 'Algo [KB-1].' }] });
+      const { ask } = await harness({ llm });
+      const answer = await ask.execute({ question: '¿Quién puede suspender usuarios?' }, admin);
+      expect(answer.flags).toContain(esperado);
+    }
   });
 
   it('el tiempo de un intento fallido se contabiliza: si no, el total no cuadra con los tramos', async () => {
@@ -239,7 +254,7 @@ describe('AskQuestionUseCase · escalera de degradación', () => {
 
     const answer = await ask.execute({ question: '¿Quién puede suspender usuarios?' }, admin);
     expect(answer.mode).toBe('rag_only');
-    expect(answer.flags).toContain('degraded:rag_only');
+    expect(answer.flags).toContain('degraded:rag_only:provider_error');
     expect(answer.citations.length).toBeGreaterThan(0);
     expect(answer.validationPassed).toBe(false);
   });

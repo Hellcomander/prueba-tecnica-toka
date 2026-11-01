@@ -6,7 +6,7 @@ import { useAgentStore, type Turn } from '@/state/agent-store';
 
 const MODE_LABELS: Record<AnswerMode, { label: string; title: string; tone: string }> = {
   normal: { label: 'MODELO PRINCIPAL', title: 'Respondió el modelo principal.', tone: 'ok' },
-  fallback_model: { label: 'MODELO DE RESPALDO', title: 'El modelo principal no respondió a tiempo; contestó el de respaldo.', tone: 'warn' },
+  fallback_model: { label: 'MODELO DE RESPALDO', title: 'El modelo principal no pudo responder; contestó el de respaldo. La señal de abajo dice por qué.', tone: 'warn' },
   rag_only: { label: 'SOLO BASE DE CONOCIMIENTO', title: 'Ningún modelo respondió: esto son los pasajes recuperados, sin redactar.', tone: 'warn' },
   cached: { label: 'EN CACHÉ', title: 'Respuesta idéntica servida desde la caché: no se llamó al modelo.', tone: 'ok' },
 };
@@ -337,18 +337,36 @@ function CitationItem({ citation }: { citation: Citation }) {
 }
 
 const FLAG_LABELS: Record<string, string> = {
-  'degraded:fallback_model': 'El modelo principal no respondió; contestó el de respaldo.',
-  'degraded:rag_only': 'Ningún modelo respondió: se muestran los pasajes recuperados.',
   'validation:canary_leak': 'La respuesta intentaba revelar las instrucciones internas y se descartó.',
   'validation:invalid_citation': 'Se eliminó una cita que no apuntaba a ningún pasaje recuperado.',
   'validation:secret_redacted': 'Se redactó algo que parecía un secreto.',
   'validation:no_citations': 'La respuesta no citó ningún pasaje.',
 };
 
+/**
+ * Por qué el motivo importa y no basta con "bajé al modelo de respaldo": agotar la cuota diaria
+ * y tardar demasiado se arreglan de formas distintas —una esperando horas o cambiando de modelo,
+ * la otra reintentando— y quien usa la pantalla merece saber cuál de las dos le tocó.
+ */
+const DEGRADED_REASONS: Record<string, string> = {
+  rate_limited: 'agotó su cuota con el proveedor',
+  timeout: 'no respondió dentro del plazo',
+  model_unavailable: 'ya no está disponible para esta clave',
+  provider_error: 'falló en el proveedor',
+};
+
 function describeFlag(flag: string): string {
   if (FLAG_LABELS[flag]) return FLAG_LABELS[flag];
   if (flag.startsWith('injection:question:')) return 'La pregunta contiene un patrón de inyección de instrucciones.';
   if (flag.startsWith('injection:context:')) return 'Un documento recuperado contiene texto que parece una instrucción.';
+
+  const degraded = /^degraded:(fallback_model|rag_only)(?::(.+))?$/.exec(flag);
+  if (degraded) {
+    const motivo = DEGRADED_REASONS[degraded[2] ?? ''] ?? 'no pudo responder';
+    return degraded[1] === 'fallback_model'
+      ? `El modelo principal ${motivo}; contestó el de respaldo.`
+      : `Ningún modelo pudo responder (el principal ${motivo}): se muestran los pasajes recuperados, sin redactar.`;
+  }
   return flag;
 }
 

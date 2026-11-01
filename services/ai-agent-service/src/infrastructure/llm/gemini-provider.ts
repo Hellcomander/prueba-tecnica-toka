@@ -4,7 +4,7 @@ import { type FunctionDeclaration, type GenerateContentResponse, GoogleGenAI, ty
 import type { EmbeddingProvider, EmbeddingResult, EmbeddingTask, LlmProvider, LlmRequest, LlmResult, ToolRequest } from '../../domain/ports';
 import { DomainError } from '../../domain/shared/domain-error';
 import { ENV, type Env } from '../config/env';
-import { translateGeminiError } from './gemini-errors';
+import { describeProviderError, translateGeminiError } from './gemini-errors';
 
 /**
  * Adaptador de Gemini. Lo que aquí se decide, y por qué:
@@ -68,7 +68,7 @@ export class GeminiLlmProvider implements LlmProvider {
       });
       return this.toResult(response, model);
     } catch (error) {
-      this.logger.warn({ event: 'gemini.error', model, err: (error as Error).message?.slice(0, 300) }, 'gemini.error');
+      this.logger.warn({ event: 'gemini.error', model, ...describeProviderError(error) }, 'gemini.error');
       throw translateGeminiError(error, model);
     }
   }
