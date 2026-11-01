@@ -80,12 +80,21 @@ services:
       - mongo-data:/data/db
       - ./infra/mongo/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      # Autentica como el usuario de audit vía hostname: el init corre solo en localhost,
-      # así que esto no pasa a healthy hasta que el init terminó. `exec` deja a mongosh como
-      # proceso directo para que Docker lo mate si excede el timeout (si no, se acumulan).
-      test: ["CMD-SHELL", "exec mongosh --quiet --host mongo -u audit_svc -p \"$${MONGO_AUDIT_PASSWORD}\" --authenticationDatabase audit_db audit_db --eval 'quit(db.runCommand({ping:1}).ok ? 0 : 1)'"]
+      # Conexión TCP **por el nombre de red**, no por localhost: durante la inicialización el
+      # entrypoint oficial levanta un mongod que solo escucha en localhost para correr los
+      # scripts de init, así que esto no pasa a healthy hasta que el init terminó. Es la misma
+      # propiedad de orden que daba el chequeo anterior con mongosh, sin su costo.
+      #
+      # Por qué se cambió: `mongosh` es un proceso Node de ~100 MB y en esta máquina tardaba
+      # 13–18 s en arrancar, por encima del timeout de 10 s, así que Mongo quedaba *unhealthy*
+      # en reposo con mongod al 2 % de CPU. Es exactamente el hallazgo de `docs/spikes.md`
+      # (un mecanismo de observabilidad mal dimensionado causa el incidente), repetido.
+      #
+      # Que `audit_svc` pueda autenticarse lo sigue garantizando el propio audit-service: su
+      # /health/ready hace ping sobre la conexión Mongoose abierta con ese usuario, y
+      # `compose up --wait` espera a que ESE contenedor esté healthy.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/mongo/27017"]
       <<: *hc
-      timeout: 10s
       start_period: 60s
     mem_limit: 512m
 
@@ -163,6 +172,25 @@ services:
       web: { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      <<: *hc
+
+  # Store vectorial de la base de conocimiento (Parte 2). No comparte volumen con nada más: su
+  # contenido se reconstruye entero desde los markdown del repositorio, así que perderlo no
+  # pierde información, solo tiempo de reindexado.
+  qdrant:
+    <<: *infra
+    image: qdrant/qdrant:v1.20.0
+    environment:
+      QDRANT__SERVICE__HTTP_PORT: "6333"
+      QDRANT__TELEMETRY_DISABLED: "true"
+      QDRANT__LOG_LEVEL: WARN
+    volumes:
+      - qdrant-data:/qdrant/storage
+    mem_limit: 384m
+    healthcheck:
+      # La imagen no trae wget, curl ni nc, pero sí bash: se usa su /dev/tcp contra /readyz.
+      # (sh en esta imagen es dash, que no soporta /dev/tcp; por eso bash explícito.)
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /readyz HTTP/1.0\\r\\n\\r\\n' >&3 && head -1 <&3 | grep -q 200"]
       <<: *hc
 
   # auth-service es el IdP: dueño de las credenciales y única fuente de los JWT. El volumen
@@ -248,6 +276,47 @@ services:
       <<: *hc
       start_period: 60s
 
+  # Agente de IA (Parte 2). Arranca aunque no haya GEMINI_API_KEY: con AI_PROVIDER=auto y sin
+  # clave usa el proveedor mock determinista, así el stack completo corre sin secretos.
+  # No espera a user/role/audit con service_healthy: las herramientas son opcionales y un vecino
+  # lento no debe impedir que el asistente levante para responder con solo RAG.
+  ai-agent-service:
+    <<: *node-svc
+    build: { context: ., dockerfile: services/ai-agent-service/Dockerfile }
+    image: toka/ai-agent-service:dev
+    mem_limit: 320m
+    environment:
+      <<: *node-env
+      PORT: "3005"
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_dev_pw}@redis:6379
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-toka_kb}
+      USER_SERVICE_URL: http://user-service:3002
+      ROLE_SERVICE_URL: http://role-service:3003
+      AUDIT_SERVICE_URL: http://audit-service:3004
+      AI_PROVIDER: ${AI_PROVIDER:-auto}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      GEMINI_FALLBACK_MODEL: ${GEMINI_FALLBACK_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-001}
+      GEMINI_EMBEDDING_DIM: ${GEMINI_EMBEDDING_DIM:-768}
+      AI_LLM_TIMEOUT_MS: ${AI_LLM_TIMEOUT_MS:-15000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+      AI_PROMPT_VERSION: ${AI_PROMPT_VERSION:-agent-v2}
+      AI_GLOBAL_RPM: ${AI_GLOBAL_RPM:-8}
+      AI_GLOBAL_RPD: ${AI_GLOBAL_RPD:-200}
+      AI_USER_RPM: ${AI_USER_RPM:-4}
+      AI_USER_DAILY_TOKENS: ${AI_USER_DAILY_TOKENS:-50000}
+    depends_on:
+      qdrant: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3005/health/ready"]
+      <<: *hc
+      start_period: 60s
+
+
 networks:
   edge: {}
   backend: {}
@@ -257,3 +326,4 @@ volumes:
   mongo-data: {}
   rabbit-data: {}
   auth-keys: {}
+  qdrant-data: {}

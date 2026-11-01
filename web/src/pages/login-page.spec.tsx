@@ -5,7 +5,6 @@ import { LoginPage } from './login-page';
 import { useAuthStore } from '@/state/auth-store';
 import { DashboardPage } from './dashboard-page';
 import { AppLayout } from '@/components/app-layout';
-import { PlaceholderPage } from './placeholder-page';
 import { ToastProvider } from '@/components/toast-provider';
 
 function renderLogin() {
@@ -16,7 +15,7 @@ function renderLogin() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<AppLayout />}>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/audit" element={<PlaceholderPage />} />
+            <Route path="/audit" element={<h1>Auditoría</h1>} />
           </Route>
         </Routes>
       </ToastProvider>

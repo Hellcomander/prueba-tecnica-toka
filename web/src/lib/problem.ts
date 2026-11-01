@@ -50,3 +50,16 @@ export function describeProblem(error: unknown): string {
 }
 
 export const isVersionConflict = (error: unknown): boolean => problemCode(error) === 'VERSION_CONFLICT';
+
+/**
+ * Segundos de la cabecera `Retry-After` (RFC 9110). El backend la manda en los límites del
+ * asistente y en las indisponibilidades; va en la cabecera y no en el cuerpo, que es donde la
+ * espera cualquier cliente HTTP. Con este número la pantalla puede enseñar una cuenta regresiva
+ * de verdad en vez de un "intenta más tarde" que no dice cuándo.
+ */
+export function retryAfterSeconds(error: unknown): number | null {
+  if (!axios.isAxiosError(error)) return null;
+  const raw = error.response?.headers?.['retry-after'];
+  const seconds = Number(Array.isArray(raw) ? raw[0] : raw);
+  return Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : null;
+}

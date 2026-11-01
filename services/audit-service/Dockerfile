@@ -11,7 +11,7 @@ COPY packages/contracts/package.json packages/contracts/
 COPY packages/nest-common/package.json packages/nest-common/
 COPY services/auth-service/package.json services/auth-service/
 COPY services/user-service/package.json services/user-service/
-COPY services/audit-service/package.json services/audit-service/
+COPY services/role-service/package.json services/role-service/
 COPY services/audit-service/package.json services/audit-service/
 COPY services/ai-agent-service/package.json services/ai-agent-service/
 RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts

@@ -1,11 +1,11 @@
-// Smoke test end-to-end de la Parte 1: comprueba contra el stack real lo que los tests
+// Smoke test end-to-end: comprueba contra el stack real lo que los tests
 // unitarios no pueden ver, porque vive entre procesos (JWT emitido por auth y validado por los
 // otros tres, eventos que cruzan RabbitMQ, el correlationId que sobrevive el viaje completo).
 //
 //   npm run smoke
 //
 // Requiere el stack arriba con el override de desarrollo, que publica los servicios en
-// 127.0.0.1:13001-13004 (ver docker-compose.dev.yml):
+// 127.0.0.1:13001-13005 (ver docker-compose.dev.yml):
 //   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --wait
 //
 // Por qué el flujo funcional va directo a los servicios y no por el gateway: el gateway limita
@@ -23,6 +23,7 @@ const SVC = {
   user: process.env.SMOKE_USER_URL ?? 'http://127.0.0.1:13002',
   role: process.env.SMOKE_ROLE_URL ?? 'http://127.0.0.1:13003',
   audit: process.env.SMOKE_AUDIT_URL ?? 'http://127.0.0.1:13004',
+  agent: process.env.SMOKE_AGENT_URL ?? 'http://127.0.0.1:13005',
 };
 
 // Credenciales de los usuarios semilla. Son datos sintéticos de desarrollo; los defaults
@@ -111,13 +112,13 @@ const state = {};
 // ---------------------------------------------------------------------------
 // 1. Salud del stack
 // ---------------------------------------------------------------------------
-await check('los 4 servicios responden /health/ready', async () => {
+await check('los 5 servicios responden /health/ready', async () => {
   for (const [name, base] of Object.entries(SVC)) {
     const res = await request(base, '/health/ready');
     assert(res.status === 200, `${name} devolvió ${res.status} en /health/ready`);
     assert(res.body?.status === 'ok', `${name} no está listo: ${res.text}`);
   }
-  return 'auth, user, role, audit';
+  return 'auth, user, role, audit, ai-agent';
 });
 
 // ---------------------------------------------------------------------------
@@ -347,6 +348,9 @@ await check('no se puede suspender al último admin activo (409 LAST_ADMIN)', as
   assert(account.status === 201, `crear la cuenta del operador devolvió ${account.status}: ${account.text}`);
   const operatorId = account.body?.id ?? account.body?.userId;
   state.operatorId = operatorId;
+  // Su rol temporal tiene users:read y users:write, pero NO agent:use: es el único usuario del
+  // stack sin permiso para el asistente, así que es con el que se comprueba el 403 de la Parte 2.
+  state.operator = operator;
 
   // Se reintenta la asignación en vez de esperar un GET: la consulta devuelve 200 con lista
   // vacía aunque role-service todavía no conozca al usuario, mientras que el PUT falla de
@@ -429,7 +433,110 @@ await check('logout invalida la sesión', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 12. Limpieza de lo que creó el smoke (los usuarios quedan: la auditoría es append-only y
+// 12. Parte 2: el agente de IA
+//
+// Son exactamente TRES consultas al agente, a propósito: el limitador propio permite 4 por
+// usuario y 8 globales por minuto (AI_USER_RPM / AI_GLOBAL_RPM), y el criterio de salida exige
+// poder correr este smoke dos veces seguidas. Con tres por corrida cabe. Si se añade una
+// comprobación más, hay que subir el límite o quitar otra.
+//
+// Funciona igual con Gemini y con el proveedor mock: lo que se comprueba es la mecánica
+// (recuperación, citas verificables, herramientas, ACL), no la redacción del modelo.
+// ---------------------------------------------------------------------------
+await check('el agente responde citando la base de conocimiento', async () => {
+  const res = await request(SVC.agent, '/api/v1/agent/query', {
+    method: 'POST',
+    token: state.adminToken,
+    body: { question: '¿Quién puede suspender a un usuario?', useCache: false },
+  });
+  assert(res.status === 201 || res.status === 200, `la consulta devolvió ${res.status}: ${res.text}`);
+  const answer = res.body;
+  assert(answer.answer?.length > 0, 'la respuesta vino vacía');
+  assert(Array.isArray(answer.citations) && answer.citations.length > 0, `no citó ningún pasaje (modo ${answer.mode})`);
+  // Una cita solo vale si se puede verificar: cada [KB-n] del texto tiene que existir en la lista.
+  const declared = new Set(answer.citations.map((c) => c.index));
+  for (const match of answer.answer.matchAll(/\[KB-(\d+)\]/g)) {
+    assert(declared.has(Number(match[1])), `el texto cita [KB-${match[1]}] y no está entre los pasajes devueltos`);
+  }
+  assert(answer.latency?.retrievalMs >= 0 && answer.latency?.llmMs >= 0, 'faltan los tramos de latencia');
+  assert(typeof answer.usage?.costUsd === 'number', 'falta la estimación de costo');
+  return `modo ${answer.mode} · ${answer.citations.length} cita(s) · ${answer.latency.totalMs} ms · ${answer.usage.costUsd} USD`;
+});
+
+await check('una pregunta de datos en vivo usa una herramienta con el token de quien pregunta', async () => {
+  const res = await request(SVC.agent, '/api/v1/agent/query', {
+    method: 'POST',
+    token: state.adminToken,
+    body: { question: '¿Cuántos usuarios activos hay en la plataforma?', useCache: false },
+  });
+  assert(res.status === 201 || res.status === 200, `la consulta devolvió ${res.status}: ${res.text}`);
+  const used = (res.body.toolCalls ?? []).filter((call) => call.ok).map((call) => call.name);
+  assert(used.includes('get_user_stats'), `esperaba get_user_stats y hubo: ${JSON.stringify(res.body.toolCalls)}`);
+  return `${used.join(', ')} · modo ${res.body.mode}`;
+});
+
+await check('el viewer no ve herramientas ni pasajes de auditoría (ACL del RAG)', async () => {
+  const viewer = await login(SEED.viewer.email, SEED.viewer.password);
+  const token = viewer.body?.accessToken ?? viewer.body?.access_token;
+  assert(token, `el login del viewer falló: ${viewer.status} ${viewer.text}`);
+
+  const caps = await request(SVC.agent, '/api/v1/agent/capabilities', { token });
+  assert(caps.status === 200, `capabilities devolvió ${caps.status}`);
+  const toolNames = caps.body.tools.map((tool) => tool.name);
+  assert(!toolNames.includes('get_audit_events'), `al viewer se le declaró get_audit_events: ${toolNames.join(', ')}`);
+  assert(caps.body.knowledgeChunks > 0, 'la base de conocimiento está vacía: la ingesta no corrió');
+
+  const res = await request(SVC.agent, '/api/v1/agent/query', {
+    method: 'POST',
+    token,
+    body: { question: '¿Cómo consulto los intentos de acceso fallidos en la auditoría?', useCache: false },
+  });
+  assert(res.status === 201 || res.status === 200, `la consulta del viewer devolvió ${res.status}: ${res.text}`);
+  const restringidos = (res.body.citations ?? []).filter((c) => c.docId.includes('auditoria'));
+  assert(restringidos.length === 0, `el viewer recibió pasajes restringidos: ${restringidos.map((c) => c.docId).join(', ')}`);
+  return `${toolNames.length} herramienta(s), ningún pasaje restringido, ${caps.body.knowledgeChunks} pasajes indexados`;
+});
+
+await check('el asistente niega por defecto: 401 sin token y 403 sin agent:use', async () => {
+  const anonima = await request(SVC.agent, '/api/v1/agent/query', { method: 'POST', body: { question: '¿Quién puede suspender usuarios?' } });
+  assert(anonima.status === 401, `sin token esperaba 401 y llegó ${anonima.status}`);
+
+  // El operador tiene users:read y users:write por su rol temporal, pero no agent:use.
+  const operador = await login(state.operator.email, state.operator.password);
+  const token = operador.body?.accessToken ?? operador.body?.access_token;
+  assert(token, `el login del operador falló: ${operador.status} ${operador.text}`);
+
+  const res = await request(SVC.agent, '/api/v1/agent/query', { method: 'POST', token, body: { question: '¿Quién puede suspender usuarios?' } });
+  assert(res.status === 403, `sin agent:use esperaba 403 y llegó ${res.status}: ${res.text}`);
+  assert(res.body?.code === 'FORBIDDEN', `esperaba el código FORBIDDEN y llegó ${res.body?.code}`);
+  // Ni siquiera llega a consultar sus capacidades.
+  const caps = await request(SVC.agent, '/api/v1/agent/capabilities', { token });
+  assert(caps.status === 403, `capabilities sin agent:use devolvió ${caps.status}`);
+  return '401 anónimo, 403 sin agent:use (consulta y capabilities)';
+});
+
+await check('la consulta al agente queda auditada sin guardar el texto de la pregunta', async () => {
+  const auditor = await login(SEED.auditor.email, SEED.auditor.password);
+  const token = auditor.body?.accessToken ?? auditor.body?.access_token;
+  const page = await eventually(
+    'el evento agent.query_completed llega a la auditoría',
+    async () => {
+      const res = await request(SVC.audit, '/api/v1/audit/events?type=agent.query_completed&limit=5', { token });
+      return res.status === 200 && res.body.items?.length > 0 ? res.body : null;
+    },
+    { timeoutMs: 20_000 },
+  );
+  const entry = page.items[0];
+  assert(entry.category === 'AI', `la categoría debería ser AI y es ${entry.category}`);
+  assert(/^[0-9a-f]{64}$/.test(entry.data?.questionHash ?? ''), 'falta el hash de la pregunta');
+  const serialized = JSON.stringify(entry);
+  assert(!serialized.includes('suspender'), 'el evento guardó el texto de la pregunta');
+  assert(typeof entry.data?.estimatedCostUsd === 'number', 'el evento no reporta el costo');
+  return `${page.items.length} evento(s) de IA · solo hash, sin texto`;
+});
+
+// ---------------------------------------------------------------------------
+// 13. Limpieza de lo que creó el smoke (los usuarios quedan: la auditoría es append-only y
 //     borrarlos escondería la evidencia de que la corrida pasó)
 // ---------------------------------------------------------------------------
 await check('limpieza: se quita el rol temporal', async () => {

@@ -3,7 +3,7 @@
 # inspeccionar datos desde el host.
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --wait postgres mongo redis rabbitmq
 #
-# También publica los servicios (13001-13004) para que `npm run smoke` los pruebe directamente.
+# También publica los servicios (13001-13005) para que `npm run smoke` los pruebe directamente.
 # El smoke necesita hacer más de cinco logins seguidos (lockout, usuario suspendido, 403 de
 # viewer) y el gateway limita /api/v1/auth/login a 5 r/m por IP: medido a través del gateway,
 # un 429 de nginx se confundiría con el 429 del lockout, que es justo lo que se quiere probar.
@@ -26,3 +26,7 @@ services:
     ports: ["127.0.0.1:13003:3003"]
   audit-service:
     ports: ["127.0.0.1:13004:3004"]
+  ai-agent-service:
+    ports: ["127.0.0.1:13005:3005"]
+  qdrant:
+    ports: ["127.0.0.1:16333:6333"]

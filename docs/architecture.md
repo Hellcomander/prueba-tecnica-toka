@@ -7,8 +7,6 @@
 > renderizan directamente).
 >
 > Los flujos de §5 están verificados contra el sistema corriendo (`node scripts/smoke.mjs`).
-> La Parte 2 (agente de IA) está diseñada aquí pero **todavía no implementada**: ver
-> *Estado y alcance* en el `README.md`.
 
 ## 1. Qué resuelve
 
@@ -64,7 +62,7 @@ Tres tipos de tráfico, con reglas distintas:
 | **user** | Directorio | Perfil (nombre, área, puesto) y ciclo de vida (activo/suspendido) | PG `user_db`, Redis | `user.profile_updated`, `user.status_changed` | `account.registered` (crea el perfil), `role.assignments_changed` (proyección `user_roles_view`) |
 | **role** | Control de acceso (RBAC) | Roles, asignaciones usuario↔rol (el catálogo de permisos es código en `@toka/contracts`) | PG `role_db` | `role.created/updated/deleted`, `role.assignments_changed` | `account.registered` (asigna `viewer` y alimenta `user_directory`), `user.status_changed` (estado en `user_directory`) |
 | **audit** | Auditoría | Read model append-only de **todos** los eventos | Mongo `audit_db` | — | `#` (todos) |
-| **ai-agent** (Parte 2) | Asistente | Base de conocimiento vectorizada, conversación, métricas de uso | Qdrant, Redis | `agent.query_completed` | — |
+| **ai-agent** | Asistente | Base de conocimiento vectorizada (markdown del repo), métricas de uso | Qdrant, Redis | `agent.query_completed` | — |
 | **gateway** | Borde | Ruteo y políticas de borde | — | — | — |
 | **web** | Hosting de la SPA | Archivos estáticos | — | — | — |
 
@@ -171,9 +169,23 @@ sequenceDiagram
 
 ### 5.4 Pregunta al agente (Parte 2)
 
-El agente recupera pasajes de la base de conocimiento **filtrados por los permisos del usuario**
-(ACL en Qdrant) y, si hace falta, llama tools de solo lectura **reenviando el JWT del usuario**:
-cada servicio vuelve a autorizar, así que el agente nunca puede ver más que el usuario.
+1. El agente comprueba **sus propios límites** en Redis antes de gastar nada, y la caché de
+   respuestas, cuya clave incluye los permisos de quien pregunta (dos usuarios con permisos
+   distintos recuperan pasajes distintos; compartir su respuesta sería una fuga de autorización).
+2. Embebe la pregunta y recupera pasajes de Qdrant con el **ACL aplicado dentro de la consulta**:
+   un pasaje que el usuario no puede ver nunca llega a estar en memoria del proceso.
+3. Llama al modelo con el contexto delimitado y **solo las herramientas que los permisos del
+   usuario autorizan**. Si pide una, se invoca **reenviando el JWT del usuario**: `user`, `role`
+   y `audit` vuelven a autorizar con sus guards de siempre. El bucle se corta a los 4 pasos.
+4. Valida la salida (canario, citas verificables, secretos), publica `agent.query_completed`
+   —con el **hash** de la pregunta, nunca su texto— y registra el gasto real en tokens.
+
+**Escalera de degradación:** modelo primario → modelo de respaldo → solo los pasajes recuperados,
+citados y marcados como tales → 503. Nunca se inventa una respuesta para tapar una caída.
+
+**Tres candados sobre lo mismo, a propósito:** al modelo solo se le declaran las herramientas
+permitidas; antes de invocar se vuelve a comprobar; y el servicio destino revalida el token. Aun
+si una inyección convenciera al modelo, no podría ver nada que el usuario no pudiera ver.
 
 ## 6. Mensajería
 
@@ -191,7 +203,7 @@ cada servicio vuelve a autorizar, así que el agente nunca puede ver más que el
 | **PostgreSQL 17** (1 contenedor, 3 bases, 1 usuario dueño por base) | Cuentas, perfiles, roles | ACID, restricciones únicas, bloqueo optimista con `version`. *Database-per-service lógico*: ningún servicio puede leer la base de otro (permisos de Postgres), sin pagar 3 contenedores en una laptop de 8 GB. SQL Server se descartó (≥ 2 GB de RAM y mal soporte arm64) |
 | **MongoDB 8** | Auditoría | Append-only, payloads distintos por tipo de evento, consultas por rango de fechas con cursor. El usuario de la app **no puede** borrar ni actualizar (rol propio verificado en el spike) |
 | **Redis 7.4** | Cache de permisos (S1), lockout de login, rate limits y presupuesto de tokens de IA | Contadores atómicos con TTL; si Redis falla, la cache degrada a *miss* |
-| **Qdrant** (Parte 2) | Vectores de la base de conocimiento | Filtros por payload para el ACL, bajo consumo de RAM, arm64 |
+| **Qdrant** | Vectores de la base de conocimiento | Filtros por payload para el ACL **dentro de la consulta**, bajo consumo de RAM, arm64 |
 
 ORM: **Prisma 7** en auth, user y role (schema declarativo, migraciones SQL versionadas, cliente
 tipado; el dominio no conoce a Prisma porque los repositorios mapean Prisma ↔ dominio).
@@ -237,7 +249,7 @@ El detalle, con el código real de cada capa y el mapa de bounded contexts, est�
 | mongo | `mongo:8.0.34` | backend | — | 512 MB |
 | redis | `redis:7.4.12-alpine` | backend | — | 160 MB |
 | rabbitmq | `rabbitmq:4.3.7-management-alpine` | backend | 127.0.0.1:15672 (UI) | 384 MB |
-| qdrant, ai-agent (Parte 2) | `qdrant/qdrant:v1.20.0`, build propio | backend | — | 384 / 320 MB |
+| qdrant, ai-agent | `qdrant/qdrant:v1.20.0`, build propio | backend | — | 384 / 320 MB |
 
 - Todo con **healthcheck** (rápido solo durante el arranque), `depends_on: service_healthy`
   hacia su propia infraestructura y reinicio automático.

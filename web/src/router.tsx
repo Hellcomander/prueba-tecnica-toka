@@ -3,10 +3,10 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/app-layout';
 import { RequirePermission, RequireSession } from '@/components/route-guard';
 import { ToastProvider } from '@/components/toast-provider';
+import { AssistantPage } from '@/pages/assistant-page';
 import { AuditPage } from '@/pages/audit-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage } from '@/pages/login-page';
-import { PlaceholderPage } from '@/pages/placeholder-page';
 import { RolesPage } from '@/pages/roles-page';
 import { UsersPage } from '@/pages/users-page';
 import { useAuthStore } from '@/state/auth-store';
@@ -43,7 +43,7 @@ export function App() {
               <Route path="users" element={<RequirePermission permission="users:read" />}><Route index element={<UsersPage />} /></Route>
               <Route path="roles" element={<RequirePermission permission="roles:read" />}><Route index element={<RolesPage />} /></Route>
               <Route path="audit" element={<RequirePermission permission="audit:read" />}><Route index element={<AuditPage />} /></Route>
-              <Route path="assistant" element={<RequirePermission permission="agent:use" />}><Route index element={<PlaceholderPage />} /></Route>
+              <Route path="assistant" element={<RequirePermission permission="agent:use" />}><Route index element={<AssistantPage />} /></Route>
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

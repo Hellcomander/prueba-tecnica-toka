@@ -19,8 +19,14 @@ git clone <este-repo> toka && cd toka
 npm run up
 ```
 
-El primer arranque construye seis imágenes y tarda alrededor de un minuto. Cuando termina, la
-aplicación está en **<http://localhost:8080>**.
+El primer arranque construye siete imágenes y tarda unos minutos. Cuando termina, la aplicación
+está en **<http://localhost:8080>**.
+
+**El asistente de IA funciona sin clave de API.** Sin `GEMINI_API_KEY` arranca con un proveedor
+*mock* determinista: responde de verdad, con recuperación real sobre la base de conocimiento,
+citas verificables y llamadas a herramientas, solo que sin un modelo de lenguaje detrás. La
+pantalla lo dice con claridad para que nadie confunda la demostración con el sistema real. Para
+usar Gemini, copia `.env.example` a `.env` y pon tu clave en `GEMINI_API_KEY`.
 
 Para apagar: `npm run down`. Para apagar **y borrar los datos** (vuelve a la semilla):
 `npm run reset`.
@@ -56,6 +62,13 @@ Este camino atraviesa casi todo el sistema:
    tabla de usuarios ya no tiene columna de acciones.
 7. Con la sesión abierta, **recarga la página**: la sesión sobrevive, porque se restaura con la
    cookie de refresco.
+8. Vuelve a entrar como **admin**, abre **Asistente** y pregunta *«¿Quién puede suspender a un
+   usuario?»*. La respuesta cita los pasajes que usó y puedes abrirlos. Después pregunta
+   *«¿Cuántos usuarios activos hay?»*: verás un chip de herramienta, porque ese dato no está en
+   la base de conocimiento y lo fue a buscar a `user-service` **con tu token**.
+9. Entra como **viewer** y haz la misma pregunta sobre la auditoría: no recibe los pasajes
+   restringidos ni se le ofrece la herramienta de auditoría. El asistente nunca ve más que quien
+   pregunta.
 
 ---
 
@@ -92,6 +105,7 @@ Este camino atraviesa casi todo el sistema:
 | **user** | Directorio de perfiles, estadísticas, suspensión | Postgres `user_db`, Redis | `user.profile_updated`, `user.status_changed` → `account.registered`, `role.assignments_changed` |
 | **role** | Roles, permisos y asignaciones (RBAC) | Postgres `role_db` | `role.*` → `account.registered`, `user.status_changed` |
 | **audit** | Registro de todo lo que ocurre (solo lectura) | Mongo `audit_db` | — → `#` (todos los eventos) |
+| **ai-agent** | Asistente con RAG sobre la base de conocimiento y herramientas de solo lectura | Qdrant, Redis | `agent.query_completed` → — |
 | **gateway** | Único punto de entrada: ruteo, límites, cabeceras | — | — |
 | **web** | SPA de administración (React) | — | — |
 
@@ -221,17 +235,19 @@ en [`docs/coverage/README.md`](docs/coverage/README.md).
 
 ## Estado y alcance
 
-Lo que está **terminado y verificado** desde un clon limpio, con volúmenes vacíos y sin `.env`:
+Lo que está **terminado y verificado** contra el stack completo corriendo:
 
-- Los cuatro microservicios, el gateway, la SPA y las cuatro bases de datos.
-- **267 tests** en verde; cada servicio por encima del umbral de cobertura.
-- **Smoke de 18 comprobaciones**, dos corridas seguidas.
-- Diez contenedores *healthy* con unos 630 MB de memoria.
+- Los cinco microservicios, el gateway, la SPA y las cinco bases de datos (incluida Qdrant).
+- El **asistente de IA**: RAG con ACL por permisos, siete herramientas de solo lectura sobre los
+  microservicios, escalera de degradación y límites propios. Funciona con Gemini y sin clave.
+- **363 tests** en verde; cada servicio por encima del umbral de cobertura.
+- **Smoke de 23 comprobaciones**, dos corridas seguidas, incluidas las cinco de la Parte 2.
+- Doce contenedores *healthy* con unos 775 MB de memoria.
 
 Lo que **falta**:
 
-- **Asistente de IA** (`/assistant` es un marcador de posición): el servicio de agente con RAG,
-  búsqueda vectorial y evaluación de calidad no está implementado.
+- **Evaluación del agente**: el golden set, el runner de métricas (acierto, p50/p95, tokens,
+  costo) y la documentación de IA (`docs/ai/`) son el siguiente paso.
 
 La documentación de la Parte 1 está completa: arquitectura, ocho ADR, DDD y Clean Architecture,
 plantilla de servicio y el **[diagnóstico del ejercicio 4](docs/ejercicio-4-diagnostico.md)**.

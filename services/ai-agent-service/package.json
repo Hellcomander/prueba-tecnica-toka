@@ -4,7 +4,11 @@
   "private": true,
   "description": "Agente de IA: RAG sobre la base de conocimiento + tools de solo lectura sobre los microservicios.",
   "scripts": {
-    "start": "node dist/main.js"
+    "build": "tsc -b tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "test": "jest --passWithNoTests",
+    "test:cov": "tsc -p tsconfig.json && jest --coverage"
   },
   "dependencies": {
     "@google/genai": "2.32.0",
@@ -16,6 +20,7 @@
     "class-transformer": "0.5.1",
     "class-validator": "0.15.1",
     "ioredis": "5.11.1",
+    "nestjs-pino": "4.6.1",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
     "tslib": "2.9.1",
