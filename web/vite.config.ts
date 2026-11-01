@@ -17,6 +17,6 @@ export default defineConfig({
     strictPort: true,
   },
   define: {
-    __API_MODE__: JSON.stringify(process.env.VITE_API_MODE ?? 'mock'),
+    __API_MODE__: JSON.stringify(process.env.VITE_API_MODE ?? 'real'),
   },
 });

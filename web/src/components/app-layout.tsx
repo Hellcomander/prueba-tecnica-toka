@@ -3,7 +3,7 @@ import type { Permission } from '@toka/contracts/permissions';
 import { API_MODE } from '@/config';
 import { problemMessage } from '@/lib/api';
 import { authApi } from '@/services/auth-api';
-import { useAuthStore } from '@/state/auth-store';
+import { displayName, useAuthStore } from '@/state/auth-store';
 import { useToast } from './toast-provider';
 
 const navigation: { label: string; href: string; permission: Permission }[] = [
@@ -20,6 +20,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const { showToast } = useToast();
   const permissions = new Set(user?.permissions ?? []);
+  const name = displayName(user);
 
   async function signOut() {
     let message = 'Sesión cerrada.';
@@ -54,9 +55,9 @@ export function AppLayout() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          <div className="avatar">{user?.fullName.slice(0, 1).toUpperCase()}</div>
+          <div className="avatar">{name.slice(0, 1).toUpperCase()}</div>
           <div className="user-identity">
-            <strong>{user?.fullName}</strong>
+            <strong>{name}</strong>
             <span>{user?.roles.join(', ')}</span>
           </div>
           <button type="button" className="icon-button" aria-label="Cerrar sesión" onClick={signOut}>↗</button>

@@ -47,6 +47,42 @@ describe('refresh interceptor', () => {
     expect(getAccessToken()).toBe('renewed');
   });
 
+  it('pide el candado de la Web Locks API para serializar el refresh entre pestañas', async () => {
+    // Sin este candado, dos pestañas presentan la misma cookie: auth rota la primera y lee la
+    // segunda como reúso de un token robado, revoca la familia y cierra ambas sesiones.
+    const acquired: string[] = [];
+    const locks = { request: jest.fn(async (name: string, run: () => Promise<unknown>) => { acquired.push(name); return run(); }) };
+    Object.defineProperty(globalThis.navigator, 'locks', { value: locks, configurable: true });
+
+    const client = axios.create();
+    const refresh = axios.create();
+    client.defaults.adapter = async (config) => {
+      if (!String(config.headers.get('Authorization') ?? '').startsWith('Bearer ')) throw unauthorized(config);
+      return response(config, { ok: true }, 200);
+    };
+    refresh.defaults.adapter = async (config) => response(config, { accessToken: 'renewed' }, 200);
+
+    await installAuthInterceptors(client, refresh).get('/private');
+
+    expect(acquired).toEqual(['toka-refresh']);
+    expect(getAccessToken()).toBe('renewed');
+    Reflect.deleteProperty(globalThis.navigator, 'locks');
+  });
+
+  it('sigue funcionando donde no existe la Web Locks API', async () => {
+    expect((globalThis.navigator as Navigator & { locks?: unknown }).locks).toBeUndefined();
+    const client = axios.create();
+    const refresh = axios.create();
+    client.defaults.adapter = async (config) => {
+      if (!String(config.headers.get('Authorization') ?? '').startsWith('Bearer ')) throw unauthorized(config);
+      return response(config, { ok: true }, 200);
+    };
+    refresh.defaults.adapter = async (config) => response(config, { accessToken: 'renewed' }, 200);
+
+    const result = await installAuthInterceptors(client, refresh).get('/private');
+    expect(result.data).toEqual({ ok: true });
+  });
+
   it('limpia la sesión y propaga el error si refresh falla', async () => {
     useAuthStore.getState().setSession(sessionUser, 'expired');
     const client = axios.create();

@@ -164,6 +164,7 @@ h1, h2, p { margin-top: 0; }
 .forbidden-page { display: grid; min-height: 100vh; align-content: center; justify-items: center; padding: 24px; text-align: center; }
 .forbidden-page h1 { max-width: 480px; font: 700 26px var(--display); }
 .forbidden-page a { color: #6f5cda; font-size: 12px; }
+.session-splash { display: grid; min-height: 100vh; align-content: center; justify-items: center; padding: 24px; color: #888995; font-size: 12px; }
 .toast-region { position: fixed; z-index: 10; top: 18px; right: 18px; display: grid; width: min(360px, calc(100vw - 36px)); gap: 9px; }
 .toast { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px; border: 1px solid #e9e8ef; border-radius: 8px; background: white; box-shadow: 0 8px 30px #292a3c17; color: #555665; font-size: 11px; }
 .toast--success { border-left: 3px solid #76b58b; }

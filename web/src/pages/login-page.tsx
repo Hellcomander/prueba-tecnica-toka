@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/state/auth-store';
+import { startSession } from '@/state/session';
 import { authApi } from '@/services/auth-api';
 import { loginDemo } from '@/services/demo-auth';
 import { problemMessage } from '@/lib/api';
@@ -25,7 +26,6 @@ export function LoginPage() {
   const status = useAuthStore((state) => state.status);
   const error = useAuthStore((state) => state.error);
   const setLoading = useAuthStore((state) => state.setLoading);
-  const setSession = useAuthStore((state) => state.setSession);
   const setError = useAuthStore((state) => state.setError);
   const navigate = useNavigate();
   const location = useLocation();
@@ -41,7 +41,7 @@ export function LoginPage() {
       const result = API_MODE === 'real'
         ? await authApi.login(values)
         : await loginDemo(values);
-      setSession(result.user, result.accessToken);
+      startSession(result.user, result.accessToken);
       navigate(destination, { replace: true });
     } catch (submitError) {
       setError(submitError instanceof Error && !('isAxiosError' in submitError)

@@ -1,7 +1,7 @@
 import { DEMO_USERS } from '@toka/contracts/seed';
 import { PERMISSIONS, PERMISSION_DESCRIPTIONS, SYSTEM_ROLES, type Permission } from '@toka/contracts/permissions';
 import { Link } from 'react-router-dom';
-import { useAuthStore } from '@/state/auth-store';
+import { displayName, useAuthStore } from '@/state/auth-store';
 import { Skeleton } from '@/components/skeleton';
 
 const quickLinks: { title: string; description: string; permission: Permission; icon: string }[] = [
@@ -23,7 +23,7 @@ export function DashboardPage() {
       <section className="welcome-row">
         <div>
           <p className="eyebrow">VISTA GENERAL</p>
-          <h1>Hola, {user?.fullName.split(' ')[0]} <span className="wave">✳</span></h1>
+          <h1>Hola, {displayName(user).split(' ')[0]} <span className="wave">✳</span></h1>
           <p className="muted">Este es el estado de tu espacio de trabajo.</p>
         </div>
         <span className="date-chip">{new Intl.DateTimeFormat('es-MX', { dateStyle: 'long' }).format(new Date())}</span>

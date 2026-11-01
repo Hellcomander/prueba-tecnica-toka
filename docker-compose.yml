@@ -133,7 +133,7 @@ services:
       context: .
       dockerfile: web/Dockerfile
       args:
-        VITE_API_MODE: ${VITE_API_MODE:-mock}
+        VITE_API_MODE: ${VITE_API_MODE:-real}
     image: toka/web:dev
     read_only: true
     tmpfs: [/tmp]

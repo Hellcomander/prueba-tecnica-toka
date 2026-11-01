@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppLayout } from '@/components/app-layout';
 import { RequirePermission, RequireSession } from '@/components/route-guard';
@@ -5,8 +6,26 @@ import { ToastProvider } from '@/components/toast-provider';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage } from '@/pages/login-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
+import { useAuthStore } from '@/state/auth-store';
+import { restoreSession } from '@/state/session';
 
 export function App() {
+  const restoring = useAuthStore((state) => state.restoring);
+
+  // Al abrir o recargar se intenta recuperar la sesión con la cookie de refresh, antes de
+  // decidir si mandar al login: si no, un reload echaría fuera a alguien que sigue autenticado.
+  useEffect(() => {
+    void restoreSession();
+  }, []);
+
+  if (restoring) {
+    return (
+      <main className="session-splash" aria-busy="true">
+        <p role="status">Restaurando sesión…</p>
+      </main>
+    );
+  }
+
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ToastProvider>
