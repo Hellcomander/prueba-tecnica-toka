@@ -20,7 +20,7 @@
 | `src/main.ts`, `src/**/*.module.ts` | Wiring de Nest sin lógica; si está mal, el servicio no arranca y el smoke falla |
 | `src/**/index.ts` | Solo re-exports |
 | `src/generated/**` | Cliente generado por Prisma |
-| `src/infrastructure/persistence/**/*.repository.ts`, `prisma.service.ts` | Adaptadores de BD: requieren la base real (además, Prisma 7 no ejecuta queries dentro de Jest 29 sin `--experimental-vm-modules`; ver `docs/spikes.md`) |
+| `src/infrastructure/persistence/**/*.repository.ts`, `*-repositories.ts`, `prisma.service.ts` | Adaptadores de BD: requieren la base real (además, Prisma 7 no ejecuta queries dentro de Jest 29 sin `--experimental-vm-modules`; ver `docs/spikes.md`) |
 | `src/infrastructure/messaging/**`, `src/infrastructure/cache/**` | Adaptadores de RabbitMQ y Redis: los cubre el smoke test. Aplica igual en `@toka/nest-common`: la conexión al broker vive en `src/infrastructure/messaging/` |
 
 La lógica de retry/DLQ del consumidor AMQP vive en `@toka/nest-common` separada del adaptador,

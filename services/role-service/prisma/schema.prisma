@@ -1,3 +1,4 @@
+// role_db: dueño de roles y asignaciones. Los IDs (UUID) los genera el dominio, no la base.
 generator client {
   provider     = "prisma-client"
   output       = "../src/generated/prisma"
@@ -8,14 +9,62 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Rol con sus permisos. El catálogo de permisos es código (@toka/contracts), no una tabla.
 model Role {
-  id          String   @id @db.Uuid
-  name        String   @unique @db.VarChar(32)
-  description String   @default("") @db.VarChar(200)
-  isSystem    Boolean  @default(false) @map("is_system")
-  version     Int      @default(1)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id          String     @id @db.Uuid
+  name        String     @unique @db.VarChar(32)
+  description String     @default("") @db.VarChar(200)
+  permissions String[]
+  isSystem    Boolean    @default(false) @map("is_system")
+  /// Bloqueo optimista: cada update exige la versión leída.
+  version     Int        @default(1)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  members     UserRole[]
 
   @@map("roles")
+}
+
+/// Versión de las asignaciones de un usuario (snapshot en role.assignments_changed).
+model UserAccess {
+  userId             String   @id @map("user_id") @db.Uuid
+  assignmentsVersion Int      @default(0) @map("assignments_version")
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedBy          String?  @map("updated_by") @db.VarChar(64)
+
+  @@map("user_access")
+}
+
+model UserRole {
+  userId     String        @map("user_id") @db.Uuid
+  roleId     String        @map("role_id") @db.Uuid
+  assignedAt DateTime      @default(now()) @map("assigned_at") @db.Timestamptz(3)
+  role       Role          @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  user       UserDirectory @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// Proyección local de usuarios (desde account.registered y user.status_changed): permite
+/// validar que el usuario existe y contar admins ACTIVOS sin llamar a user-service.
+model UserDirectory {
+  userId        String     @id @map("user_id") @db.Uuid
+  email         String     @db.VarChar(254)
+  status        String     @default("ACTIVE") @db.VarChar(16)
+  statusVersion Int        @default(0) @map("status_version")
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  roles         UserRole[]
+
+  @@map("user_directory")
+}
+
+/// Idempotencia de consumidores: el insert va en la misma transacción que el efecto.
+model ProcessedEvent {
+  eventId     String   @id @map("event_id") @db.Uuid
+  type        String   @db.VarChar(64)
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+
+  @@map("processed_events")
 }

@@ -1,5 +1,8 @@
+import { z } from 'zod';
 import {
   ADMIN_ROLE,
+  DEMO_USERS,
+  SYSTEM_ROLE_IDS,
   DEFAULT_ROLE,
   EVENTS,
   EventDataSchemas,
@@ -133,5 +136,15 @@ describe('topología', () => {
     for (const q of Object.values(QUEUES)) {
       for (const b of q.bindings) expect(b === '#' || known.has(b)).toBe(true);
     }
+  });
+});
+
+describe('datos semilla', () => {
+  it('los IDs fijos son UUID válidos y cada usuario demo tiene un rol de sistema', () => {
+    for (const u of Object.values(DEMO_USERS)) {
+      expect(z.uuid().safeParse(u.id).success).toBe(true);
+      expect(Object.keys(SYSTEM_ROLE_IDS)).toContain(u.role);
+    }
+    for (const id of Object.values(SYSTEM_ROLE_IDS)) expect(z.uuid().safeParse(id).success).toBe(true);
   });
 });

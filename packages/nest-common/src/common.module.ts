@@ -1,7 +1,7 @@
 import { type DynamicModule, Global, Module } from '@nestjs/common';
 import { APP_FILTER, APP_PIPE } from '@nestjs/core';
 import { CORRELATION_HEADER } from '@toka/contracts';
-import { ClsModule } from 'nestjs-cls';
+import { ClsModule, type ClsPlugin } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
 import { CLS_CORRELATION_ID } from './context/request-context';
@@ -10,7 +10,10 @@ import { buildPinoHttpOptions, type LoggerConfig } from './logging/logger-option
 import { SERVICE_NAME } from './messaging/event-publisher';
 import { createValidationPipe } from './validation/validation.pipe';
 
-export type CommonModuleOptions = LoggerConfig;
+export interface CommonModuleOptions extends LoggerConfig {
+  /** Plugins de CLS, p. ej. ClsPluginTransactional para la unidad de trabajo con Prisma. */
+  clsPlugins?: ClsPlugin[];
+}
 
 /**
  * Base de todo servicio: contexto por request (CLS) con el correlation-id, logs JSON con pino,
@@ -25,6 +28,7 @@ export class CommonModule {
       imports: [
         ClsModule.forRoot({
           global: true,
+          plugins: options.clsPlugins ?? [],
           middleware: {
             mount: true,
             generateId: true,
@@ -34,7 +38,7 @@ export class CommonModule {
             setup: (cls) => cls.set(CLS_CORRELATION_ID, cls.getId()),
           },
         }),
-        LoggerModule.forRoot({ pinoHttp: buildPinoHttpOptions(options) }),
+        LoggerModule.forRoot({ pinoHttp: buildPinoHttpOptions({ service: options.service, level: options.level, version: options.version }) }),
       ],
       providers: [
         { provide: SERVICE_NAME, useValue: options.service },

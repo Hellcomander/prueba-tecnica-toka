@@ -23,6 +23,29 @@ x-infra: &infra
   networks: [backend]
   security_opt: ["no-new-privileges:true"]
 
+# Servicios Node: usuario no root (en la imagen), FS de solo lectura, sin capabilities, init
+# para reenviar señales (apagado ordenado) y límite de memoria.
+x-node-svc: &node-svc
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging: *logging
+  networks: [backend]
+  mem_limit: 256m
+
+x-node-env: &node-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  NODE_OPTIONS: --max-old-space-size=160
+  OIDC_ISSUER: http://auth-service:3001
+  TRUST_PROXY_HOPS: "1"
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:-toka}:${RABBITMQ_PASSWORD:-rabbit_dev_pw}@rabbitmq:5672
+  CHECKPOINT_DISABLE: "1"
+  PRISMA_HIDE_UPDATE_MESSAGE: "1"
+
 services:
   postgres:
     <<: *infra
@@ -103,6 +126,23 @@ services:
       <<: *hc
       start_period: 60s
     mem_limit: 384m
+
+  role-service:
+    <<: *node-svc
+    build: { context: ., dockerfile: services/role-service/Dockerfile }
+    image: toka/role-service:dev
+    environment:
+      <<: *node-env
+      PORT: "3003"
+      DATABASE_URL: postgresql://role_svc:${ROLE_DB_PASSWORD:-role_dev_pw}@postgres:5432/role_db
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3003/health/ready"]
+      <<: *hc
+      start_period: 60s
 
 networks:
   edge: {}

@@ -1,5 +1,5 @@
 import { Inject, Injectable, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
-import { CORRELATION_HEADER, EVENTS_EXCHANGE, type EventEnvelope, type QueueDefinition } from '@toka/contracts';
+import { CORRELATION_HEADER, EVENTS_EXCHANGE, type EventEnvelope, type QueueDefinition, QUEUES } from '@toka/contracts';
 import * as amqp from 'amqp-connection-manager';
 import type { ChannelWrapper } from 'amqp-connection-manager';
 import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
@@ -12,7 +12,11 @@ import { declareTopology } from '../../messaging/topology';
 
 export interface MessagingOptions {
   url: string;
-  /** Colas que este servicio consume (se declaran al conectar). */
+  /**
+   * Colas a declarar al conectar. Por defecto TODAS las del sistema: así un evento publicado
+   * antes de que arranque su consumidor espera en la cola en vez de perderse (un exchange sin
+   * colas enlazadas descarta el mensaje).
+   */
   queues?: readonly QueueDefinition[];
   prefetch?: number;
   publishTimeoutMs?: number;
@@ -46,7 +50,7 @@ export class AmqpConnection implements OnModuleInit, OnApplicationShutdown {
       name: 'publisher',
       confirm: true,
       publishTimeout: this.options.publishTimeoutMs ?? 5_000,
-      setup: (channel: ConfirmChannel) => declareTopology(channel, this.options.queues ?? []),
+      setup: (channel: ConfirmChannel) => declareTopology(channel, this.options.queues ?? Object.values(QUEUES)),
     });
   }
 
@@ -108,7 +112,7 @@ export class AmqpConnection implements OnModuleInit, OnApplicationShutdown {
         await fn();
       }),
     );
-    const base = { queue, routingKey: message.fields.routingKey, eventId: outcome.eventId, durationMs: Date.now() - started };
+    const base = { queue, type: outcome.type, eventId: outcome.eventId, durationMs: Date.now() - started };
     if (outcome.action === 'ack') this.logger.info({ event: 'amqp.message.consumed', ...base }, 'amqp.message.consumed');
     else if (outcome.action === 'retry')
       this.logger.warn({ event: 'amqp.message.retried', ...base, attempt: outcome.nextAttempt, err: outcome.error }, 'amqp.message.retried');

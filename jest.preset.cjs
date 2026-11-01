@@ -36,6 +36,7 @@ module.exports = (rootDir, opts = {}) => {
       '!src/**/index.ts',
       '!src/generated/**',
       '!src/infrastructure/persistence/**/*.repository.ts',
+      '!src/infrastructure/persistence/**/*-repositories.ts',
       '!src/infrastructure/persistence/prisma.service.ts',
       '!src/infrastructure/messaging/**',
       '!src/infrastructure/cache/**',

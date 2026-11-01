@@ -23,8 +23,6 @@
     "@nestjs/common": "11.2.8",
     "@nestjs/core": "11.2.8",
     "@nestjs/platform-express": "11.2.8",
-    "@nestjs/swagger": "11.4.7",
-    "@nestjs/terminus": "11.1.1",
     "@node-rs/argon2": "2.2.2",
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
@@ -44,6 +42,8 @@
   },
   "devDependencies": {
     "@nestjs/testing": "11.2.8",
-    "@types/cookie-parser": "1.4.10"
+    "@types/cookie-parser": "1.4.10",
+    "@types/supertest": "7.2.1",
+    "supertest": "7.3.1"
   }
 }

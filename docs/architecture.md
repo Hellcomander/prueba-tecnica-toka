@@ -36,7 +36,7 @@ flowchart LR
 
   AUTH & USR & ROLE --> PG[("PostgreSQL 17: auth_db · user_db · role_db")]
   AUD --> MG[("MongoDB 8: audit_db")]
-  AUTH & USR & ROLE & AI --> RD[(Redis 7.4)]
+  AUTH & USR & AI --> RD[(Redis 7.4)]
   AI --> QD[(Qdrant)]
   AI --> LLM[["Gemini o proveedor mock"]]
 ```
@@ -55,7 +55,7 @@ Tres tipos de tráfico, con reglas distintas:
 |---|---|---|---|---|---|
 | **auth** | Identidad (IdP) | Cuentas, credenciales (hash argon2id), sesiones de refresh, llaves de firma | PG `auth_db`, Redis | `account.registered`, `auth.login_succeeded`, `auth.login_failed`, `auth.account_locked`, `auth.logout` | `user.status_changed` |
 | **user** | Directorio | Perfil (nombre, área, puesto) y ciclo de vida (activo/suspendido) | PG `user_db`, Redis | `user.profile_updated`, `user.status_changed` | `account.registered` (crea el perfil), `role.assignments_changed` (proyección `user_roles_view`) |
-| **role** | Control de acceso (RBAC) | Roles, catálogo de permisos, asignaciones usuario↔rol | PG `role_db`, Redis | `role.created/updated/deleted`, `role.assignments_changed` | `account.registered` (asigna `viewer` y alimenta `user_directory`), `user.status_changed` (estado en `user_directory`) |
+| **role** | Control de acceso (RBAC) | Roles, asignaciones usuario↔rol (el catálogo de permisos es código en `@toka/contracts`) | PG `role_db` | `role.created/updated/deleted`, `role.assignments_changed` | `account.registered` (asigna `viewer` y alimenta `user_directory`), `user.status_changed` (estado en `user_directory`) |
 | **audit** | Auditoría | Read model append-only de **todos** los eventos | Mongo `audit_db` | — | `#` (todos) |
 | **ai-agent** (Parte 2) | Asistente | Base de conocimiento vectorizada, conversación, métricas de uso | Qdrant, Redis | `agent.query_completed` | — |
 | **gateway** | Borde | Ruteo y políticas de borde | — | — | — |
