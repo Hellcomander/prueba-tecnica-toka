@@ -11,14 +11,17 @@ Todo lo que se cita aquí —rutas, nombres de cola, números— sale de este re
 propongo una herramienta que **no existe** en el proyecto, lo digo de forma explícita con la
 etiqueta **(propuesta)**.
 
-**Nota de alcance.** Hoy `services/ai-agent-service/` contiene solo `package.json`, `tsconfig` y
-`jest.config.cjs`: el servicio de IA no está implementado y `/assistant` es un marcador de posición
-(*Estado y alcance* del `README.md`). El gateway sí tiene la ruta —`infra/gateway/nginx.conf` mapea
-`^/api/v1/agent` a `ai-agent-service:3005` con `resolver 127.0.0.11` y la dirección en una
-variable—, así que hoy esa ruta devolvería **502** por fallo de DNS, no latencia. El ejercicio se
-responde sobre el sistema **tal como está diseñado y documentado** (`docs/architecture.md` §5.4 y
-la sección Gemini de `docs/spikes.md`, que sí tiene mediciones reales del proveedor). Lo señalo
-porque un diagnóstico que finge conocer código inexistente no se puede defender.
+**Nota de alcance.** Los cinco servicios están implementados, **el agente de IA incluido**, así
+que este diagnóstico se responde sobre el sistema **tal como corre**, no sobre un diseño: cada
+comando de aquí se puede ejecutar contra el stack y cada campo de log que se cita existe. Lo que
+**no** existe en el proyecto se marca con **(propuesta)** y se concentra en la sección 4: no hay
+métricas, ni trazas, ni alertas, ni agregación de logs.
+
+Tres de los ejemplos de este documento **no son hipotéticos**: ocurrieron durante el desarrollo,
+están en el historial de git y se usan aquí porque un incidente real enseña más que uno inventado
+—un fallo del proveedor que degradaba todas las respuestas sin dar error, un panel de latencia que
+perdía quince segundos, y un healthcheck que tumbaba su propio contenedor—. Aparecen en H6, H8 y
+en la sección 5.
 
 ---
 
@@ -37,7 +40,9 @@ pod" y a que el incidente vuelva treinta minutos después.
 - Faltan registros de auditoría, pero no se sabe si **no se publicaron**, **no se consumieron** o
   **no se pudieron insertar** en Mongo. Son tres fallos con tres evidencias distintas.
 - La IA responde lento, pero no se sabe si la demora está en recuperar el contexto, en el proveedor
-  del modelo o en el bucle de herramientas.
+  del modelo o en el bucle de herramientas. Esta es la única de las tres que se responde sin
+  investigar: cada respuesta del agente trae `latency.{retrievalMs, llmMs, toolsMs, totalMs}`, así
+  que basta con mirar una.
 
 **Lo que hace falta averiguar antes de tocar nada:**
 
@@ -54,9 +59,9 @@ La pregunta determina toda la estrategia: si es una causa común, se arregla una
 el peor error es gastar la primera hora buscando la teoría elegante que lo une todo.
 
 En esta arquitectura hay **tres componentes compartidos** por los tres síntomas, y por tanto tres
-candidatos a causa común: **RabbitMQ** (`toka.events`, en la ruta de escritura de los cuatro
-servicios y, según el diseño, también de `agent.query_completed`), **Postgres** (un contenedor con
-`auth_db`, `user_db` y `role_db`) y **el host** (diez contenedores con límites de memoria ajustados).
+candidatos a causa común: **RabbitMQ** (`toka.events`, en la ruta de escritura de los cinco
+servicios, `agent.query_completed` incluido), **Postgres** (un contenedor con `auth_db`, `user_db`
+y `role_db`) y **el host** (doce contenedores con límites de memoria ajustados).
 
 La prueba rápida —**menos de diez minutos, sin cambiar nada**— son tres sondas independientes:
 
@@ -81,7 +86,7 @@ docker compose exec rabbitmq rabbitmqctl list_queues \
   buscar otra cosa.
 - Si `audit-service.all` tiene `consumers = 0` o `messages_ready` creciendo, pero el resto del
   broker está sano → la auditoría está explicada aparte; 500 y latencia de IA siguen abiertos.
-- Si los cuatro `/health/ready` responden 200, las colas están vacías y solo la IA es lenta →
+- Si los cinco `/health/ready` responden 200, las colas están vacías y solo la IA es lenta →
   **son incidentes independientes** y se tratan en paralelo con dueños distintos.
 
 El segundo criterio, más barato aún: **tomar un solo `correlationId` de una petición que falló y
@@ -103,9 +108,15 @@ métrica científica: es una forma de obligarse a comprobar primero lo que es ba
 | **H3** | Mongo: disco lleno, permiso denegado a `audit_svc` o índice faltante | registros · latencia de auditoría | 3 | 4 | 2 | **6.0** | 10 min |
 | **H4** | Saturación del pool de Postgres (`max: 10` por servicio, `max_connections=60`) | 500 · lentitud general | 3 | 4 | 2 | **6.0** | 10 min |
 | **H5** | S1 `auth → role` degradada: cortacircuitos abierto y sin copia *stale* en Redis → 503 | 500/503 en login | 3 | 5 | 2 | **7.5** | 10 min |
-| **H6** | Proveedor de IA: latencia alta, 429 por cuota, reintentos ciegos o bucle de herramientas largo | IA | 4 | 3 | 3 | **4.0** | 20 min |
-| **H7** | Efecto dominó: la IA lenta retiene conexiones y bloquea al resto | 500 · lentitud | 2 | 4 | 3 | **2.7** | 20 min |
+| **H6** | Proveedor de IA: latencia alta, 429 por cuota agotada, modelo mal configurado o bucle de herramientas en su tope | IA | 4 | 3 | 2 | **6.0** | 10 min |
+| **H7** | Efecto dominó: el agente, sin límite de **concurrencia**, agota el pool de `user-service` | 500 · lentitud | 2 | 4 | 3 | **2.7** | 20 min |
 | **H8** | OOM de un contenedor Node (`mem_limit 256m`, heap 160 MB) → reinicios → 500 y pérdida de consumidores | 500 · registros | 3 | 4 | 1 | **12.0** | 3 min |
+| **H9** | El agente arrancó en **modo mock**: responde rápido y sin errores, pero no usa el modelo | "respuestas raras" | 2 | 3 | 1 | **6.0** | 1 min |
+
+H6 bajó de coste (de 3 a 2) respecto de la primera versión de este documento por una razón
+concreta: cuando se escribió, los tres tramos de latencia de la IA había que reconstruirlos a mano;
+hoy vienen en cada respuesta y en cada evento de auditoría, así que la hipótesis se descarta o se
+confirma con una consulta en vez de con veinte minutos de instrumentación.
 
 A continuación, cada una con su mecanismo y su evidencia.
 
@@ -297,21 +308,53 @@ Un `breaker.opened` con destino `role-service` en la ventana del incidente confi
 
 ### H6 · El servicio de IA
 
-Cuatro causas distintas que producen el mismo síntoma, y hay que separarlas porque las acciones son
-opuestas. Los números vienen de la sonda real documentada en `docs/spikes.md` (31-oct-2026):
+Cinco causas distintas que producen el mismo síntoma, y hay que separarlas porque las acciones son
+opuestas. Los números vienen de mediciones reales contra el proveedor (`docs/spikes.md`).
 
 | Causa | Qué se ve | Qué la confirma |
 |---|---|---|
-| **Latencia del proveedor** | `durationMs` del modelo alto y estable; sin errores | Comparar con la referencia medida: `gemini-3.5-flash` 2.9–4.5 s, `gemini-3.5-flash-lite` 0.4–0.6 s |
+| **Latencia del proveedor** | `llmMs` alto y estable; sin errores | Comparar con la línea base medida: `gemini-3.5-flash` 2.9–4.5 s, `gemini-3.5-flash-lite` 0.4–0.6 s |
 | **Modelo equivocado** | Latencias de minutos | La sonda midió **232 s** en `gemini-3.8-flash` sin timeout de cliente. Verificar `GEMINI_MODEL` en el entorno desplegado |
-| **Cuota (429)** | `RESOURCE_EXHAUSTED` con `google.rpc.RetryInfo.retryDelay` y `QuotaFailure` | Contar 429 por minuto. El RPD se reinicia a medianoche hora del Pacífico, lo que produce un incidente que "se cura solo" a una hora fija |
-| **Reintentos ciegos** | La tasa de 429 **sube** cuando el tráfico baja | Correlacionar peticiones salientes al proveedor contra peticiones entrantes de usuario: si la razón es > 1, el reintento está amplificando |
-| **Bucle de herramientas largo** | Latencia total alta con latencia por llamada normal | Contar pasos por conversación: 1 llamada ≠ 5 llamadas encadenadas a `user`, `role` y `audit` |
+| **Cuota agotada (429)** | `mode` pasa a `fallback_model` o `rag_only` y aparece la señal `degraded:…:rate_limited` | El log `gemini.error` trae `quotaMetric`, `quotaLimit` y `retryAfterSeconds` como campos |
+| **Reintentos ciegos** | La tasa de 429 **sube** cuando el tráfico baja | No debería ocurrir —el SDK va con `attempts: 1` y no hay reintento propio— así que si pasa, alguien cambió esa configuración |
+| **Bucle de herramientas en su tope** | `toolsMs` domina y `toolCalls` trae 4 entradas | 4 es `AI_MAX_TOOL_STEPS`: si todas las respuestas llegan al tope, el modelo no está cerrando el razonamiento |
+
+**La consulta que descarta o confirma las cinco de una vez**, sin entrar a ningún contenedor,
+porque la auditoría guarda el desglose de cada consulta al agente:
+
+```bash
+curl -s -H "authorization: Bearer $AUDITOR_TOKEN" \
+  "http://localhost:8080/api/v1/audit/events?type=agent.query_completed&limit=50" \
+  | jq -c '.items[] | {at: .occurredAt, mode: .data.mode, model: .data.model,
+                       ms: .data.latencyMs, tools: .data.toolsUsed, flags: .data.flags}'
+```
+
+Si `mode` es `normal` y `latencyMs` es alto → proveedor lento. Si `mode` cayó a `fallback_model`,
+las `flags` dicen **por qué** (`rate_limited`, `timeout`, `model_unavailable`, `provider_error`),
+que es exactamente la bifurcación que separa "espera un minuto" de "espera hasta medianoche".
+
+**El 429 por cuota tiene una firma reconocible y un plazo largo.** Medido el 1-nov-2026 en el
+*free tier*: `gemini-3.5-flash` agota `generate_content_free_tier_requests` a las **20 peticiones
+diarias**, y el propio error trae `retryDelay: 47631s` ≈ **13 horas**, hasta medianoche hora del
+Pacífico. Eso produce un incidente que empieza a una hora distinta cada día y **se cura solo** a
+una hora fija. Consecuencia de diseño que conviene decir en voz alta: con el modelo primario, la
+cuota del proveedor se agota **antes** que el limitador propio (`AI_GLOBAL_RPD=200`), así que la
+degradación al modelo de respaldo no es un caso raro, es el camino habitual en un día de uso
+intenso. Por eso la señal lleva el motivo y no solo "se degradó".
+
+> **Caso real: una degradación sin ningún error.** Durante el desarrollo, *toda* pregunta que
+> usara una herramienta terminaba en `rag_only`. No había 500, ni latencia anómala, ni nada en
+> rojo: el usuario recibía los pasajes de la base de conocimiento en vez de una respuesta
+> redactada. La causa era un 400 del proveedor —`Function call is missing a thought_signature in
+> functionCall parts`— porque al reenviar el turno del modelo se perdía una firma opaca que Gemini
+> 3 exige de vuelta. Dos lecciones para este ejercicio: **una degradación bien hecha esconde el
+> fallo que la provocó**, así que hay que alertar sobre la tasa de `mode != normal` y no solo
+> sobre los errores; y el problema solo apareció contra el proveedor real, nunca en los tests.
 
 El hallazgo más citable de la sonda: el SDK convierte el timeout del cliente en el encabezado
 `X-Server-Timeout`, así que el `504 DEADLINE_EXCEEDED` lo emite el servidor al vencer ese plazo —no
 es una falla del modelo. **Sin timeout propio, una petición de usuario puede quedarse colgada casi
-cuatro minutos.** De ahí el límite de 15 s por llamada al LLM.
+cuatro minutos.** De ahí el límite de 15 s por llamada al LLM (`AI_LLM_TIMEOUT_MS`).
 
 Además, el gateway limita `^/api/v1/agent` a `10r/m` por IP con `burst=5` y responde **429**
 (`limit_req_status 429`), y nginx no fija `proxy_read_timeout`, por lo que rige el defecto de
@@ -321,14 +364,26 @@ agente. Conviene saberlo antes de buscar la causa donde no está.
 ### H7 · Efecto dominó
 
 **Mecanismo.** El agente reenvía el JWT del usuario y llama a `user`, `role` y `audit` como
-herramientas (`docs/architecture.md` §5.4). Si esas llamadas son lentas y no tienen límite de
-concurrencia, cada conversación mantiene varias peticiones abiertas contra servicios que comparten
-Postgres: el pool de 10 de `user-service` se agota atendiendo al agente y los usuarios normales
-empiezan a esperar. El síntoma aparece en servicios que no tienen ningún problema propio.
+herramientas. Cada llamada ya está acotada en **tiempo** —`HttpToolGateway` usa el mismo
+`ResilientHttpClient` del resto del repo: timeout de 3 s (`TOOL_TIMEOUT_MS`), un reintento y
+cortacircuitos— así que una herramienta lenta no cuelga la petición indefinidamente.
+
+Lo que **no** está acotado es la **concurrencia**: nada limita cuántas llamadas simultáneas puede
+tener el agente en vuelo hacia un mismo servicio. Con varias conversaciones a la vez, cada una
+haciendo hasta 4 pasos de herramientas, el pool de 10 conexiones de `user-service` se agota
+atendiendo al agente y los usuarios normales empiezan a esperar. El síntoma aparece en servicios
+que no tienen ningún problema propio.
+
+Es una hipótesis más estrecha de lo que parece —el timeout y el cortacircuitos ya cubren el caso
+"una herramienta se colgó"— y por eso su prioridad es la más baja de la tabla. Pero es la que
+explica el patrón raro: `user-service` lento **solo cuando el asistente se usa**.
 
 **Evidencia:** en los logs de `user-service` y `role-service`, cruzar `durationMs` alto con el
-origen de las peticiones del agente; en Postgres, ver si las consultas lentas vienen de `user_db`.
-Se descarta si la latencia de `user` y `role` es normal mientras la IA está lenta.
+`correlationId` de las consultas del agente; contar peticiones concurrentes en la ventana. Se
+descarta si la latencia de `user` y `role` es normal mientras la IA está lenta, o si
+`toolsMs` es pequeño frente a `llmMs` en los eventos `agent.query_completed`.
+
+La mitigación es la acción A10, que sigue pendiente.
 
 ### H8 · OOM de un contenedor Node
 
@@ -337,10 +392,22 @@ Si un proceso supera el límite, Docker lo mata; con `restart: unless-stopped` v
 arranque las peticiones en vuelo se cortan (500 o conexión reiniciada) y el consumidor de eventos
 tarda en re-suscribirse. Es barato de comprobar y explica dos síntomas, así que entra temprano.
 
-Hay precedente registrado en `docs/spikes.md`: unos healthchecks mal dimensionados (`mongosh` cada
-5 s, `rabbitmq-diagnostics` cada 10 s) se acumularon bajo carga de CPU y mataron a Mongo por OOM.
-**Un mecanismo de observabilidad mal dimensionado puede causar el incidente.** Si alguien añadió
-sondas agresivas hace poco, es sospechoso número uno.
+Hay precedente registrado, y **dos veces**, lo que lo convierte en patrón de este sistema y no en
+anécdota:
+
+1. En los spikes de F0, unos healthchecks mal dimensionados (`mongosh` cada 5 s,
+   `rabbitmq-diagnostics` cada 10 s) se acumularon bajo carga de CPU y mataron a Mongo por OOM.
+2. Al añadir los dos contenedores de la Parte 2, el healthcheck de Mongo volvió a romperse por lo
+   mismo: `mongosh` es un proceso Node de ~100 MB y tardaba **13–18 s** en arrancar contra un
+   timeout de 10 s, así que Mongo quedaba *unhealthy* **con `mongod` al 2 % de CPU y la base
+   respondiendo con normalidad**. El diagnóstico equivocado habría sido "Mongo está caído"; el
+   correcto era "la sonda es más cara que su propio intervalo". Se sustituyó por una conexión TCP
+   al puerto, que conserva la misma garantía de orden de arranque sin el coste.
+
+**Un mecanismo de observabilidad mal dimensionado puede causar el incidente, y además puede
+disfrazarse de avería del componente que vigila.** Si alguien añadió sondas agresivas hace poco, o
+si el host ganó carga, es sospechoso número uno. La comprobación que separa los dos casos es mirar
+el CPU del proceso vigilado: si está ocioso y la sonda falla, el problema es la sonda.
 
 **Evidencia:**
 
@@ -349,6 +416,38 @@ docker compose ps --format '{{.Name}}\t{{.Status}}'          # ¿"Restarting"? �
 docker inspect --format '{{.Name}} OOMKilled={{.State.OOMKilled}} restarts={{.RestartCount}}' \
   $(docker compose ps -q)
 ```
+
+### H9 · El agente arrancó en modo mock
+
+**Mecanismo.** `AI_PROVIDER=auto` elige Gemini si hay `GEMINI_API_KEY` y, si no la hay, **el
+proveedor mock determinista**. Es una decisión deliberada —hace que el stack arranque y se pueda
+evaluar sin secretos— pero crea un modo de fallo silencioso propio: si un despliegue pierde la
+clave (un secreto no montado, una variable mal escrita, un `.env` que no se copió), **el asistente
+no falla**. Arranca, responde en milisegundos, no registra ningún error y devuelve texto con
+citas reales de la base de conocimiento. El síntoma que llega no es "la IA está caída" sino "las
+respuestas del asistente están raras", o ni siquiera eso.
+
+Se incluye aquí porque es el único síntoma de este documento que **no produce ni un 500 ni
+latencia**: produce lo contrario, respuestas sospechosamente rápidas. Y porque es el recordatorio
+de que una degradación cómoda puede volverse invisible.
+
+**Evidencia, un comando y un segundo:**
+
+```bash
+curl -s -H "authorization: Bearer $TOKEN" http://localhost:8080/api/v1/agent/capabilities \
+  | jq '{provider, model, embeddingModel}'
+# {"provider":"mock","model":"mock-flash","embeddingModel":"mock-embedding"}  <- aquí está
+```
+
+También se ve en la auditoría sin tocar el servicio: en `agent.query_completed`, el campo `model`
+dice `mock-flash` y `latencyMs` baja a decenas de milisegundos de golpe. Un cambio brusco de
+`model` entre dos despliegues es la firma exacta.
+
+**Mitigación (propuesta):** que `AI_PROVIDER=auto` sea el default solo fuera de producción, y que
+en producción `AI_PROVIDER=gemini` falle al arrancar si no hay clave —el esquema zod ya valida la
+configuración al inicio, así que es el sitio natural—. La interfaz ya avisa del modo en la barra
+superior, pero una integración que consuma la API por su cuenta no lo vería.
+
 
 ---
 
@@ -377,10 +476,10 @@ contenido de las colas en vuelo y la memoria del cortacircuitos.
 ### Paso 1 · Topología viva (3 min)
 
 `docker compose ps` y `docker stats`: quién está reiniciando, quién consume memoria, quién murió por
-OOM (H8). Después, los cuatro `/health/ready`:
+OOM (H8). Después, los cinco `/health/ready`:
 
 ```bash
-for p in 13001 13002 13003 13004; do curl -s -o /dev/null -w "$p %{http_code}\n" \
+for p in 13001 13002 13003 13004 13005; do curl -s -o /dev/null -w "$p %{http_code}\n" \
   "http://127.0.0.1:$p/health/ready"; done
 # en producción, desde dentro:
 docker compose exec audit-service wget -qO- http://127.0.0.1:3004/health/ready
@@ -469,15 +568,22 @@ resto (sección 5).
 
 ### Paso 7 · Confirmar la reparación con el smoke
 
-`scripts/smoke.mjs` ejecuta **18 comprobaciones contra el sistema real**: los cuatro
-`/health/ready`, que el mismo JWT lo validen los cuatro servicios, que crear un usuario propague
+`scripts/smoke.mjs` ejecuta **23 comprobaciones contra el sistema real**: los cinco
+`/health/ready`, que el mismo JWT lo validen los cinco servicios, que crear un usuario propague
 perfil, rol y auditoría **con el mismo `correlationId`**, el 409 por versión obsoleta, la rotación
 del refresh y el bloqueo por intentos fallidos. Esa comprobación de propagación es justo la que
 falla cuando los eventos no llegan, lo que convierte al smoke en la prueba de regresión natural de
 este incidente.
 
+Cinco de las 23 son de la Parte 2 y sirven para cerrar los síntomas de IA: que el agente responda
+**citando pasajes que de verdad se recuperaron** (una cita a un pasaje inexistente la detecta el
+propio smoke), que una pregunta de datos en vivo **use una herramienta**, que un `viewer` no reciba
+ni la herramienta de auditoría ni sus pasajes, y que la consulta quede auditada. Son solo tres
+llamadas al modelo por corrida, a propósito: el limitador propio permite 4 por usuario y 8 globales
+por minuto, y el criterio de cierre exige poder correrlo dos veces seguidas.
+
 ```bash
-npm run smoke        # requiere up:dev: publica los servicios en 127.0.0.1:13001-13004
+npm run smoke        # requiere up:dev: publica los servicios en 127.0.0.1:13001-13005
 ```
 
 Dos advertencias que evitan una falsa alarma: con `npm run up` (sin `:dev`) los puertos de los
@@ -495,7 +601,10 @@ verse.
 Conviene ser directo sobre el punto de partida. Hoy el sistema tiene logs JSON con `service`,
 `correlationId`, `userId`, `event` y `durationMs` y secretos redactados; propagación del
 `correlationId` de punta a punta, mensajería incluida; `/health/live` y `/health/ready` por
-servicio; la consola de RabbitMQ; y el smoke como verificación funcional.
+servicio; la consola de RabbitMQ; el smoke como verificación funcional; y, para la IA, el rastro
+por consulta en `agent.query_completed` (modo, modelo efectivo, los tres tramos, tokens, costo y
+señales), que es lo más parecido a una métrica que hay en el repositorio, aunque se consulte como
+una bitácora y no como una serie temporal.
 
 Lo que **no** tiene: los logs **no están centralizados** —viven en el controlador `json-file` de
 cada contenedor, con 30 MB de retención—, **no hay métricas, ni trazas distribuidas, ni alertas,
@@ -538,6 +647,11 @@ estamos lentos" salvo comparando contra una **línea base medida**. Por eso la s
 `docs/spikes.md` tiene valor operativo y no solo histórico: 2.9–4.5 s para `gemini-3.5-flash` y
 0.4–0.6 s para `gemini-3.5-flash-lite` son el punto de comparación.
 
+La respuesta a esa ceguera fue construir el rastro propio: cada consulta publica
+`agent.query_completed` con el modelo efectivo, el modo, los tramos, los tokens y el costo, y la
+auditoría lo conserva. No sustituye a ver la cola del proveedor —eso no existe— pero convierte
+"¿desde cuándo está lento?" en una consulta con rango de fechas.
+
 **El coste y la latencia dependen de los tokens, no de las peticiones.** Una petición de 200 tokens
 y otra de 20 000 pesan igual en el contador de peticiones por minuto y difieren en órdenes de
 magnitud en tiempo y dinero. Un contexto que crece —una conversación larga, una recuperación con
@@ -548,24 +662,39 @@ una línea del prompt.
 
 **Los reintentos ciegos empeoran un 429.** Un `RESOURCE_EXHAUSTED` no es un fallo transitorio de
 red: es el proveedor diciendo "para". Reintentar de inmediato consume la cuota restante y alarga el
-bloqueo. La respuesta trae `google.rpc.RetryInfo.retryDelay` y `QuotaFailure`, y **ese plazo es el
-que hay que respetar**, con *jitter* y sin reintentar más de una vez. Los límites del *free tier* se
-aplican **por proyecto** y el RPD se reinicia a medianoche hora del Pacífico, lo que da una firma
-reconocible: un incidente que empieza a una hora parecida cada día y se cura solo a otra hora fija.
-Por eso el limitador propio arranca conservador y configurable: `AI_GLOBAL_RPM=8`,
-`AI_GLOBAL_RPD=200`, `AI_USER_RPM=4`, `AI_USER_DAILY_TOKENS=50000`.
+bloqueo. Por eso aquí **no se reintenta**: el SDK va con `attempts: 1`, el `retryDelay` de
+`google.rpc.RetryInfo` se traduce a la cabecera `Retry-After` de la respuesta al usuario, y ante un
+429 el sistema **cambia de modelo** en vez de insistir con el mismo. Si alguna vez se observa que
+la tasa de 429 sube cuando baja el tráfico, significa que alguien tocó esa configuración.
 
-**Hay tres tiempos dentro de uno.** "La IA está lenta" es inservible como diagnóstico. Hay que
-separar y medir por separado:
+Los límites del *free tier* se aplican **por proyecto** y el RPD se reinicia a medianoche hora del
+Pacífico, lo que da una firma reconocible: un incidente que empieza a una hora distinta cada día y
+se cura solo a una hora fija. El limitador propio existe para repartir la cuota entre usuarios y
+para poder decir cuánto falta: `AI_GLOBAL_RPM=8`, `AI_GLOBAL_RPD=200`, `AI_USER_RPM=4`,
+`AI_USER_DAILY_TOKENS=50000`. Conviene saber que, con el modelo primario, **la cuota del proveedor
+se agota antes que estos límites** (20 peticiones al día), así que el 429 que se verá primero es el
+de Google, no el propio.
 
-| Tramo | Qué se mide | Causa típica si domina |
-|---|---|---|
-| **Recuperación de contexto** | Latencia de la búsqueda vectorial (Qdrant) y número de pasajes | Índice frío, filtro de ACL caro, `k` demasiado alto |
-| **Modelo** | Latencia por llamada, tokens de entrada / salida / razonamiento, modelo efectivo | Proveedor congestionado, modelo mal configurado, contexto inflado |
-| **Herramientas** | Número de pasos y latencia de cada llamada a `user`, `role` y `audit` | Bucle de herramientas largo, o un servicio lento aguas abajo (H7) |
+**Hay tres tiempos dentro de uno.** "La IA está lenta" es inservible como diagnóstico. Por eso
+cada respuesta trae los tres tramos medidos por separado, y no hay que reconstruirlos:
+
+| Tramo | Campo | Qué se mide | Causa típica si domina |
+|---|---|---|---|
+| **Recuperación de contexto** | `latency.retrievalMs` | Embebido de la pregunta y búsqueda vectorial en Qdrant con el filtro de ACL | Índice frío, `AI_RETRIEVAL_LIMIT` demasiado alto |
+| **Modelo** | `latency.llmMs` | Todas las llamadas al proveedor de esa consulta, **incluidos los intentos fallidos** | Proveedor congestionado, modelo mal configurado, contexto inflado |
+| **Herramientas** | `latency.toolsMs` | Las llamadas a `user`, `role` y `audit`, con `toolCalls` detallando cada una | Bucle en su tope, o un servicio lento aguas abajo (H7) |
 
 Si el tramo dominante es el de herramientas, el problema **no está en la IA**: está en el servicio
 que la herramienta llama, y se diagnostica con la sección 3.
+
+> **Caso real: los quince segundos sin dueño.** La primera versión de esta medición sumaba el
+> tiempo del modelo **solo cuando la llamada salía bien**. Una petición que agotó su plazo de 15 s
+> en el modelo primario y respondió con el de respaldo se reportaba como *total 17,5 s · modelo
+> 2,3 s*: quince segundos que el usuario esperó de verdad y que ningún tramo reclamaba. Es
+> exactamente el panel inútil que este documento critica, cometido al construirlo. La corrección
+> es de una línea —contabilizar el tramo en un `finally`— y la lección es general: **los tramos
+> tienen que sumar el total, y el primer sitio donde dejan de hacerlo es el camino de error.** Si
+> en un panel los tramos no cuadran con el total, el hueco es la pista, no un redondeo.
 
 ### Escalera de degradación
 
@@ -574,12 +703,21 @@ observable. Los modelos se configuran por entorno (`GEMINI_MODEL`, `GEMINI_FALLB
 `GEMINI_EMBEDDING_MODEL`) y no hay identificadores fijos en el código, así que cada escalón es un
 cambio de variable, no un despliegue.
 
-| Escalón | Condición de entrada | Qué recibe el usuario |
-|---|---|---|
-| 1 · **Modelo primario** (`gemini-3.5-flash`) | Normal | Respuesta completa |
-| 2 · **Modelo de respaldo** (`gemini-3.5-flash-lite`) | p95 por encima del umbral, o 429 sostenido | Respuesta completa, algo más breve. **Se avisa en la interfaz** |
-| 3 · **Solo recuperación de contexto** | El proveedor no responde dentro del timeout de 15 s, o la cuota diaria está agotada | Los pasajes relevantes de la base de conocimiento, sin redacción, con la fuente citada. Sigue siendo útil |
-| 4 · **Error claro** | Ni siquiera hay recuperación | `503` en `application/problem+json`, con `code` estable, `correlationId` y un mensaje que dice qué pasó y cuándo reintentar |
+La decisión de bajar de peldaño se toma **por petición**, no por una media móvil: en cuanto una
+llamada al modelo falla, esa petición prueba el siguiente escalón. Es más simple que vigilar un
+p95 —no hace falta estado compartido entre instancias— y evita el caso en que el usuario espera a
+que una ventana estadística se convenza de que el proveedor está mal.
+
+| Escalón | Condición de entrada | Qué recibe el usuario | Señal |
+|---|---|---|---|
+| 1 · **Modelo primario** (`gemini-3.5-flash`) | Normal | Respuesta completa | `mode: normal` |
+| 2 · **Modelo de respaldo** (`gemini-3.5-flash-lite`) | El primario falló esta petición: 429, plazo vencido, modelo retirado o error del proveedor | Respuesta completa, algo más breve. **Se avisa en la interfaz, con el motivo** | `mode: fallback_model` + `degraded:fallback_model:<motivo>` |
+| 3 · **Solo recuperación de contexto** | Ningún modelo respondió, pero sí hubo pasajes relevantes | Los pasajes de la base de conocimiento, sin redacción, con la fuente citada. Sigue siendo útil | `mode: rag_only` |
+| 4 · **Error claro** | Ni modelo ni pasajes | `503` en `application/problem+json`, con `code` estable, `correlationId` y `Retry-After` | `AI_UNAVAILABLE` |
+
+Que el motivo viaje con la señal no es cosmético: **"agotó la cuota" y "tardó demasiado" se
+arreglan de formas opuestas** —una esperando trece horas o cambiando de modelo, la otra
+reintentando— y sin el motivo las dos se ven igual en el panel.
 
 El escalón 4 es un diseño, no una rendición: un mensaje de error honesto con un identificador para
 reportar es preferible a una respuesta inventada o a una espera de cuatro minutos. El mismo
@@ -684,7 +822,7 @@ tenga cuidado.
 > memoria y aplicó control de flujo. Los publicadores quedaron bloqueados y cada escritura sumó
 > 5 segundos de espera antes de fallar.
 > **Por qué no se detectó antes:** no hay alertas sobre profundidad de cola ni sobre la edad del
-> mensaje más viejo. El primer aviso lo dio un usuario. Los cuatro `/health/ready` estuvieron en
+> mensaje más viejo. El primer aviso lo dio un usuario. Los cinco `/health/ready` estuvieron en
 > verde todo el incidente, porque por diseño solo validan el almacén propio.
 > **Por qué fue silencioso:** el publicador de eventos captura el fallo de confirmación y lo
 > registra sin relanzarlo, de modo que la petición HTTP respondía con éxito.
@@ -707,8 +845,10 @@ seguimiento es una intención.
 | A6 | Revisar el dimensionado del pool: `max: 10` por servicio contra `max_connections=60` **no escala más allá de seis instancias**. Documentar el techo y evaluar un *pooler* (propuesta: PgBouncer) antes de replicar | H4 | Hoy funciona por tener una instancia de cada servicio; es una bomba de relojería al escalar |
 | A7 | Alerta sobre `used_memory` de Redis acercándose a `maxmemory`, y métrica de **aciertos de la copia *stale*** en `AuthorizationResolver` | H5 | Con `noeviction`, un Redis lleno desactiva el respaldo de S1 sin que nadie lo note, y convierte una degradación de `role` en 503 masivos |
 | A8 | Métrica de **tasa de apertura del cortacircuitos** por destino y prueba periódica del camino *stale* | H5 | El cortacircuitos es correcto; lo que falta es saber cuándo abre |
-| A9 | Panel de IA con los **tres tramos separados** (recuperación, modelo, herramientas), tokens por petición y modelo efectivo en uso; respetar `RetryInfo.retryDelay` en lugar de reintentar a ciegas | H6 | "La IA está lenta" no es accionable; "el bucle de herramientas hace 7 pasos" sí |
-| A10 | Límite de concurrencia del agente hacia `user`, `role` y `audit`, con su propio presupuesto de conexiones | H7 | Evita que una conversación lenta agote el pool de un servicio que no tiene ningún problema |
+| A9 | **Hecho en parte.** Los tres tramos, los tokens, el costo, el modelo efectivo y el motivo de la degradación ya viajan en cada respuesta y en `agent.query_completed`, y el `RetryInfo` se respeta en vez de reintentar. Falta **agregarlo**: hoy se consulta consulta a consulta, no hay p95 ni serie temporal | H6 | "La IA está lenta" no es accionable; "el modelo primario agotó su cuota a las 14:05" sí |
+| A10 | Límite de **concurrencia** del agente hacia `user`, `role` y `audit`, con su propio presupuesto de conexiones. El timeout y el cortacircuitos ya están; lo que falta es el tope de llamadas en vuelo | H7 | Evita que varias conversaciones a la vez agoten el pool de un servicio que no tiene ningún problema |
+| A10b | **Alerta sobre la tasa de `mode != normal`**, no solo sobre errores | H6 | Una degradación bien hecha no produce errores: esconde el fallo que la provocó. Pasó de verdad con el `thought_signature` |
+| A10c | En producción, exigir `AI_PROVIDER=gemini` y **fallar al arrancar sin clave**, en vez de caer al mock en silencio | H9 | Un despliegue sin secreto responde rápido, sin errores y sin modelo |
 | A11 | Revisar que ninguna sonda de salud nueva sea más cara que su intervalo | H8 | Ya ocurrió una vez: los healthchecks de la primera versión mataron a Mongo por OOM (`docs/spikes.md`) |
 | A12 | Instrumentación base en este orden: **agregación de logs → métricas RED y de colas → alertas → trazas** | Todas | Cada escalón hace útil al siguiente; las alertas sin métricas no existen, y las trazas sin agregación no se consultan |
 
