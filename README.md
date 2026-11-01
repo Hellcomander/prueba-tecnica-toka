@@ -235,14 +235,20 @@ en [`docs/coverage/README.md`](docs/coverage/README.md).
 
 ## Estado y alcance
 
-Lo que está **terminado y verificado** contra el stack completo corriendo:
+Lo que está **terminado y verificado** desde un clon limpio, con volúmenes vacíos y **sin
+`.env`** (es decir, sin ninguna clave de API):
 
 - Los cinco microservicios, el gateway, la SPA y las cinco bases de datos (incluida Qdrant).
 - El **asistente de IA**: RAG con ACL por permisos, siete herramientas de solo lectura sobre los
   microservicios, escalera de degradación y límites propios. Funciona con Gemini y sin clave.
 - **363 tests** en verde; cada servicio por encima del umbral de cobertura.
 - **Smoke de 23 comprobaciones**, dos corridas seguidas, incluidas las cinco de la Parte 2.
-- Doce contenedores *healthy* con unos 775 MB de memoria.
+- Doce contenedores *healthy*, todos por debajo de su límite de memoria: unos 1,1 GB en total
+  tras dos corridas del smoke.
+
+El asistente también se probó **contra Gemini real** (con `.env`): responde citando los pasajes,
+llama a `get_user_stats` para los datos en vivo y, cuando el modelo principal no contesta a
+tiempo, baja al de respaldo sin que la comprobación falle.
 
 Lo que **falta**:
 
